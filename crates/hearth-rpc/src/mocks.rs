@@ -1,6 +1,61 @@
-use remoc::{robs::list::ObservableList, rtc::async_trait};
+use remoc::{robs::{list::ObservableList, hash_map::ObservableHashMap}, rtc::async_trait};
 use tokio::sync::RwLock;
 use super::*;
+
+pub struct MockProcessStore {
+    services: RwLock<ObservableHashMap<String, LocalProcessId>>,
+    processes: ObservableHashMap<LocalProcessId, ProcessInfo>,
+
+}
+
+#[async_trait]
+impl ProcessStore for MockProcessStore {
+    async fn print_hello_world(&self) -> CallResult<()>{
+        Ok(())
+    }
+
+    async fn find_process(&self, pid: LocalProcessId) -> ResourceResult<ProcessApiClient>{
+        match self.processes.get(&pid) {
+            None => Err(ResourceError::Unavailable),
+            Some => Ok(()),
+        }
+    }
+
+    async fn register_service(&self, pid: LocalProcessId, name: String) -> ResourceResult<()>{
+        
+        if !self.processes.contains_key(&pid) {
+            return Err(ResourceError::Unavailable);
+        }
+        let mut services = self.services.write().await;
+        if services.contains_key(&name){
+            return Err(ResourceError::BadParams);
+        }
+        services.insert(name, pid);
+        Ok(())
+    }
+
+    async fn deregister_service(&self, name: String) -> ResourceResult<()>{
+        match self.services.write().await.remove(&name) {
+            None => Err(ResourceError::Unavailable),
+            _ => Ok(())
+        }
+
+    }
+
+    async fn follow_process_list(
+        &self,
+    ) -> CallResult<HashMapSubscription<LocalProcessId, ProcessInfo>> {
+        Ok(self.processes.subscribe(128))
+
+    }
+
+    async fn follow_service_list(&self) -> CallResult<HashMapSubscription<String, LocalProcessId>>{
+        Ok(self.services.read().await.subscribe(128))
+
+    }
+
+
+}
 
 pub struct MockProcessApi {
     log: RwLock<ObservableList<ProcessLogEvent>>,
@@ -65,3 +120,5 @@ impl MockProcessApi {
         }
     }
 }
+
+

@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use remoc::rtc::ServerShared;
+use std::sync::Arc;
 use remoc::{robs::{list::ObservableList, hash_map::ObservableHashMap}, rtc::async_trait};
 use tokio::sync::RwLock;
 use super::*;
@@ -5,6 +8,7 @@ use super::*;
 pub struct MockProcessStore {
     services: RwLock<ObservableHashMap<String, LocalProcessId>>,
     processes: ObservableHashMap<LocalProcessId, ProcessInfo>,
+    mock_processes: HashMap<LocalProcessId, ProcessApiClient>,
 
 }
 
@@ -15,9 +19,9 @@ impl ProcessStore for MockProcessStore {
     }
 
     async fn find_process(&self, pid: LocalProcessId) -> ResourceResult<ProcessApiClient>{
-        match self.processes.get(&pid) {
+        match self.mock_processes.get(&pid) {
             None => Err(ResourceError::Unavailable),
-            Some => Ok(()),
+            Some(api) => Ok(api.clone()),
         }
     }
 
@@ -53,8 +57,26 @@ impl ProcessStore for MockProcessStore {
         Ok(self.services.read().await.subscribe(128))
 
     }
-
-
+}
+impl MockProcessStore {
+    pub fn new() -> Self {
+        let mut processes = ObservableHashMap::new();
+        let mut mock_processes = HashMap::new();
+        let test_pid = LocalProcessId(0);
+        let test_info = ProcessInfo { source_lump: LumpId(Default::default()) };
+        let test_process = MockProcessApi::new();
+        processes.insert(test_pid, test_info);
+        let (process_server, process_client) = ProcessApiServerShared::<_, remoc::codec::Default>::new(Arc::new(test_process), 1024);
+        tokio::spawn(async move {
+            process_server.serve(true).await;
+        });
+        mock_processes.insert(test_pid, process_client);
+        Self {
+            services: Default::default(),
+            processes,
+            mock_processes,
+        }
+    }
 }
 
 pub struct MockProcessApi {

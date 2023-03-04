@@ -143,4 +143,77 @@ impl MockProcessApi {
     }
 }
 
+pub struct MockPeerApi {
+    peer_info: PeerInfo,
+    process_store: ProcessStoreClient,
+}
+
+#[async_trait]
+impl PeerApi for MockPeerApi {
+    async fn get_info(&self) -> CallResult<PeerInfo>{
+         Ok(self.peer_info.clone())
+    }
+
+    async fn get_process_store(&self) -> CallResult<ProcessStoreClient>{
+        Ok(self.process_store.clone())
+    }
+
+    async fn get_lump_store(&self) -> CallResult<LumpStoreClient> {
+        Err(CallError::RemoteForward)
+    }
+}
+
+impl MockPeerApi {
+    pub fn new() -> Self{
+        let test_store = MockProcessStore::new();
+        let (store_server, process_store) = ProcessStoreServerShared::<_, remoc::codec::Default>::new(Arc::new(test_store), 1024);
+        tokio::spawn(async move {
+            store_server.serve(true).await;
+        });
+        MockPeerApi{
+            peer_info: PeerInfo { nickname: Some("New peer".into())},
+            process_store,
+
+        }
+    }
+}
+
+pub struct MockPeerProvider {
+    peers: HashMap<PeerId, PeerApiClient>,
+    peer_info: ObservableHashMap<PeerId, PeerInfo>,
+}
+
+#[async_trait]
+impl PeerProvider for MockPeerProvider {
+    async fn find_peer(&self, id: PeerId) -> ResourceResult<PeerApiClient>{
+        match self.peers.get(&id) {
+            None => Err(ResourceError::Unavailable),
+            Some(peer) => Ok(peer.clone())
+        }
+    }
+
+    async fn follow_peer_list(&self) -> CallResult<HashMapSubscription<PeerId, PeerInfo>>{
+        Ok(self.peer_info.subscribe(128))
+    }
+}
+
+impl MockPeerProvider {
+    pub fn new() -> Self {
+        let mut peer_info = ObservableHashMap::new();
+        let mut peers = HashMap::new();
+        let test_pid = PeerId(0);
+        let test_info = PeerInfo {nickname: {Some("Silly Peer".into())}};
+        let test_process = MockPeerApi::new();
+        peer_info.insert(test_pid, test_info);
+        let (peer_server, peer_client) = PeerApiServerShared::<_, remoc::codec::Default>::new(Arc::new(test_process), 1024);
+        tokio::spawn(async move {
+            peer_server.serve(true).await;
+        });
+        peers.insert(test_pid, peer_client);
+        Self {
+            peers,
+            peer_info,
+        }
+    }
+}
 

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/dominion",
   "crates/font-mud",
   "crates/hearth-client",
   "crates/hearth-ctl",

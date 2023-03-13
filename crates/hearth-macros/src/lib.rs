@@ -18,17 +18,38 @@
 
 use proc_macro2::{Literal, Span, TokenStream};
 use quote::quote;
-use syn::{parse_macro_input, FnArg, Ident, ImplItem, ImplItemMethod, Pat, PatIdent, Type};
+use syn::{
+    parse_macro_input, AttributeArgs, FnArg, Ident, ImplItem, ImplItemMethod, Meta, MetaNameValue,
+    NestedMeta, Pat, PatIdent, Type,
+};
 
 #[proc_macro_attribute]
 pub fn impl_wasm_linker(
-    _attr: proc_macro::TokenStream,
+    attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
+    let args = parse_macro_input!(attr as AttributeArgs);
     let impl_item = parse_macro_input!(item as syn::ItemImpl);
 
     let fn_items = impl_item.items;
     let impl_type = impl_item.self_ty;
+
+    let module = args
+        .into_iter()
+        .next()
+        .expect("Expected one attribute argument");
+    let module = match module {
+        NestedMeta::Meta(Meta::NameValue(MetaNameValue { path, lit, .. })) => {
+            let path = path.get_ident().expect("Argument key must be ident");
+            assert_eq!(
+                path.to_string(),
+                "module",
+                "Only supported argument is 'module'"
+            );
+            lit
+        }
+        _ => panic!("Set only the module with 'module = \"your module\""),
+    };
 
     let mut items_within_impl = vec![];
     let mut link_wrapped_fns = vec![];
@@ -47,6 +68,8 @@ pub fn impl_wasm_linker(
 
     quote! {
         impl #impl_type {
+            const MODULE: &'static str = #module;
+
             #(#items_within_impl)*
             #(#link_wrapped_fns)*
         }
@@ -80,7 +103,7 @@ fn generate_linker_function(
 ) -> TokenStream {
     let link_fn_ident = link_fn_ident.clone();
     let internal_function = generate_internal_function(fn_method, impl_type);
-    let func_wrap_call = generate_func_wrap(fn_method, impl_type);
+    let func_wrap_call = generate_func_wrap(fn_method);
     quote! {
         pub fn #link_fn_ident<T: AsRef<Self> + Send>(linker: &mut Linker<T>) {
             #internal_function
@@ -116,9 +139,8 @@ fn generate_add_to_linker_call(link_fn_ident: &Ident) -> TokenStream {
         Self::#link_fn_ident(linker);
     }
 }
-fn generate_func_wrap(fn_method: &ImplItemMethod, impl_type: &Ident) -> TokenStream {
+fn generate_func_wrap(fn_method: &ImplItemMethod) -> TokenStream {
     let func_wrap_ident = generate_func_wrap_ident(fn_method);
-    let module_literal = get_module_literal(impl_type);
     let fn_literal = get_func_wrap_literal(fn_method);
     let closure_call_params = get_internal_parameters(fn_method);
     let closure_args = generate_closure_args(fn_method);
@@ -134,7 +156,7 @@ fn generate_func_wrap(fn_method: &ImplItemMethod, impl_type: &Ident) -> TokenStr
     };
     if has_guest_memory(&get_fn_args(fn_method)) {
         quote! {
-            linker.#func_wrap_ident(#module_literal, #fn_literal, |#closure_args| {
+            linker.#func_wrap_ident(Self::MODULE, #fn_literal, |#closure_args| {
                 // if constructing GuestMemory fails something is seriously wrong
                 let memory = GuestMemory::from_caller(&mut caller).unwrap();
 
@@ -143,7 +165,7 @@ fn generate_func_wrap(fn_method: &ImplItemMethod, impl_type: &Ident) -> TokenStr
         }
     } else {
         quote! {
-            linker.#func_wrap_ident(#module_literal, #fn_literal, |#closure_args| {
+            linker.#func_wrap_ident(Self::MODULE, #fn_literal, |#closure_args| {
                 #fn_call_thing
             }).unwrap();
         }
@@ -211,9 +233,6 @@ fn get_fn_name(fn_method: &ImplItemMethod) -> Ident {
 }
 fn get_func_wrap_literal(fn_method: &ImplItemMethod) -> Literal {
     Literal::string(fn_method.sig.ident.to_string().as_str())
-}
-fn get_module_literal(impl_type_ident: &Ident) -> Literal {
-    Literal::string(impl_type_ident.to_string().to_lowercase().as_str())
 }
 fn get_fn_args(fn_method: &ImplItemMethod) -> Vec<FnArg> {
     let mut args: Vec<FnArg> = fn_method.sig.inputs.iter().cloned().collect();

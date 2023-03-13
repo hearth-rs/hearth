@@ -59,6 +59,45 @@ impl Display for LumpId {
     }
 }
 
+/// The severity level for a log message emitted by a process.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+pub enum ProcessLogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
+impl TryFrom<u32> for ProcessLogLevel {
+    type Error = ();
+
+    fn try_from(other: u32) -> Result<Self, ()> {
+        use ProcessLogLevel::*;
+        match other {
+            0 => Ok(Trace),
+            1 => Ok(Debug),
+            2 => Ok(Info),
+            3 => Ok(Warning),
+            4 => Ok(Error),
+            _ => Err(()),
+        }
+    }
+}
+
+impl Into<u32> for ProcessLogLevel {
+    fn into(self) -> u32 {
+        use ProcessLogLevel::*;
+        match self {
+            Trace => 0,
+            Debug => 1,
+            Info => 2,
+            Warning => 3,
+            Error => 4,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

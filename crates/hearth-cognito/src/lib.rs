@@ -35,7 +35,7 @@ pub struct Cognito {
 // Should automatically generate link_print_hello_world:
 // #[impl_wasm_linker]
 // should work for any struct, not just Cognito
-#[impl_wasm_linker]
+#[impl_wasm_linker(module = "cognito")]
 impl Cognito {
     pub fn this_pid(&self) -> u64 {
         self.ctx.get_pid().0

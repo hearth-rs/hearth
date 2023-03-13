@@ -258,15 +258,6 @@ pub struct ProcessLogEvent {
     // TODO serializeable timestamp?
 }
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
-pub enum ProcessLogLevel {
-    Trace,
-    Debug,
-    Info,
-    Warning,
-    Error,
-}
-
 /// A process's metadata.
 #[derive(Clone, Debug, Hash, Deserialize, Serialize)]
 pub struct ProcessInfo {}

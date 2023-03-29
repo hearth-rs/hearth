@@ -6,7 +6,7 @@ Thank you to everyone who has contributed to Hearth!
 - Malek, early-stage code contributions (GitHub: [@MalekiRe](https://github.com/MalekiRe))
 - Sasha Koshka, logo artist ([website](https://holanet.xyz))
 - Emma Tebibyte, licensing and best practices consultant ([website](https://tebibyte.media/~emma))
-- iris, frontend design and development (GitHub: [@airidaceae](https://github.com/airidaceae))
+- Roux, frontend design and development (GitHub: [@airidaceae](https://github.com/airidaceae))
 
 If this is your first time contributing to Hearth, feel free to to add your
 name and info to this list! This is a permanent record of your assistance on

@@ -50,7 +50,7 @@ impl<T: AssetLoader> AssetPool<T> {
 
     async fn load_asset(&self, lump: &LumpId, data: &[u8]) -> Result<Arc<T::Asset>> {
         let assets = self.assets.read().await;
-        if let Some(asset) = assets.get(&lump) {
+        if let Some(asset) = assets.get(lump) {
             Ok(asset.to_owned())
         } else {
             // switch to write lock

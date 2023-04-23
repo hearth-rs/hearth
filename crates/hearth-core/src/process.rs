@@ -581,7 +581,7 @@ impl ProcessStore for ProcessStoreImpl {
 
     async fn deregister_service(&self, name: String) -> ResourceResult<()> {
         debug!("Deregistering service '{}'", name);
-        if let None = self.inner.write().await.services.remove(&name) {
+        if self.inner.write().await.services.remove(&name).is_none() {
             Err(ResourceError::Unavailable)
         } else {
             Ok(())

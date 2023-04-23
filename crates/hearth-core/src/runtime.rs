@@ -52,12 +52,14 @@ pub trait Plugin: Send + Sync + 'static {
     async fn run(&mut self, runtime: Arc<Runtime>);
 }
 
+#[allow(clippy::type_complexity)]
 struct PluginWrapper {
     plugin: Box<dyn Any>,
     runner: Box<dyn FnOnce(Box<dyn Any>, Arc<Runtime>) -> JoinHandle<()>>,
 }
 
 /// Builder struct for a single Hearth [Runtime].
+#[allow(clippy::type_complexity)]
 pub struct RuntimeBuilder {
     config_file: toml::Table,
     plugins: HashMap<TypeId, PluginWrapper>,
@@ -198,8 +200,7 @@ impl RuntimeBuilder {
     pub fn get_plugin<T: Plugin>(&self) -> Option<&T> {
         self.plugins
             .get(&TypeId::of::<T>())
-            .map(|p| p.plugin.downcast_ref())
-            .flatten()
+            .and_then(|p| p.plugin.downcast_ref())
     }
 
     /// Retrieves a mutable reference to a plugin that has already been added.
@@ -208,8 +209,7 @@ impl RuntimeBuilder {
     pub fn get_plugin_mut<T: Plugin>(&mut self) -> Option<&mut T> {
         self.plugins
             .get_mut(&TypeId::of::<T>())
-            .map(|p| p.plugin.downcast_mut())
-            .flatten()
+            .and_then(|p| p.plugin.downcast_mut())
     }
 
     /// Consumes this builder and starts up the full [Runtime].

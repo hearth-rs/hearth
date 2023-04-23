@@ -118,13 +118,11 @@ impl LumpStoreImpl {
                 .to_owned(),
         );
 
-        let mut store = self.store.write().await;
-        if !store.contains_key(&id) {
+        self.store.write().await.entry(id).or_insert_with(|| {
             debug!("Storing lump {}", id);
             let blob = LazyBlob::new(data.clone());
-            let lump = Lump { data, blob };
-            store.insert(id, lump);
-        }
+            Lump { data, blob }
+        });
 
         id
     }

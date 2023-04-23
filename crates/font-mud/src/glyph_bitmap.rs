@@ -54,14 +54,15 @@ impl GlyphMtsdf {
         let height = (bounds.height() * px_per_unit).ceil() as u32 + 8;
         let width = width.max(16);
         let height = height.max(16);
-        let framing = bounds
-            .autoframe(width, height, range, None)
-            .ok_or(FontError::AutoFraming {
-                glyph,
-                width: width as usize,
-                height: height as usize,
-                range,
-            })?;
+        let framing =
+            bounds
+                .autoframe(width, height, range, None)
+                .ok_or(FontError::AutoFraming {
+                    glyph,
+                    width: width as usize,
+                    height: height as usize,
+                    range,
+                })?;
         let mut bitmap = Bitmap::<Rgba<f32>>::new(width, height);
         shape.generate_mtsdf(&mut bitmap, framing, config);
         shape.correct_sign(&mut bitmap, framing, FillRule::default());

@@ -100,10 +100,10 @@ impl TryFrom<u32> for ProcessLogLevel {
     }
 }
 
-impl Into<u32> for ProcessLogLevel {
-    fn into(self) -> u32 {
+impl From<ProcessLogLevel> for u32 {
+    fn from(val: ProcessLogLevel) -> Self {
         use ProcessLogLevel::*;
-        match self {
+        match val {
             Trace => 0,
             Debug => 1,
             Info => 2,

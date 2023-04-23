@@ -46,8 +46,8 @@ impl SpawnWasm {
             .take_initial()
             .unwrap()
             .get("hearth.cognito.WasmProcessSpawner")
-            .expect("Peer is not running WebAssembly")
-            .clone();
+            .copied()
+            .expect("Peer is not running WebAssembly");
         let process = RemoteProcess::new(&daemon, ProcessInfo {}).await.unwrap();
         let lump_id = peer_api
             .get_lump_store()

@@ -30,9 +30,9 @@ mod tests {
 
     #[tokio::test]
     async fn auth_then_encrypt() {
-        const PASSWORD: &'static [u8] = b"deadbeef";
-        const SENT: &'static [u8] = b"Hello, world!";
-        const RECEIVED: &'static [u8] = b"Hello, lowly ego!";
+        const PASSWORD: &[u8] = b"deadbeef";
+        const SENT: &[u8] = b"Hello, world!";
+        const RECEIVED: &[u8] = b"Hello, lowly ego!";
 
         let authenticator = ServerAuthenticator::from_password(PASSWORD).unwrap();
         let (mut client, mut server) = tokio::io::duplex(128);

@@ -22,12 +22,12 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: build
-        args: --all-features
+        args: --all-targets
     - name: Test
       uses: actions-rs/cargo@v1
       with:
         command: test
-        args: --all-features
+        args: --all-targets
   clippy_check:
     runs-on: ubuntu-latest
     steps:
@@ -37,7 +37,7 @@ jobs:
     - uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        args: --all-features
+        args: --all-targets
   rustfmt:
     runs-on: ubuntu-latest
     steps:

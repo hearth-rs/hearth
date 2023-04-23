@@ -23,7 +23,7 @@ fn spawn(spawner: ProcessId, cb: fn()) -> ProcessId {
         spawner,
         &WasmSpawnInfo {
             lump: hearth_guest::this_lump(),
-            entrypoint: Some(unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32),
+            entrypoint: Some(cb as usize as u32),
         },
     );
 

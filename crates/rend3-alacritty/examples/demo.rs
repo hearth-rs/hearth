@@ -88,7 +88,7 @@ impl DemoInner {
 
         let config = Arc::new(TerminalConfig { fonts });
 
-        let mut store = TerminalStore::new(config, &renderer, surface_format);
+        let mut store = TerminalStore::new(config, renderer, surface_format);
 
         let term_size =
             alacritty_terminal::term::SizeInfo::new(100.0, 75.0, 1.0, 1.0, 0.0, 0.0, false);
@@ -260,7 +260,7 @@ impl DemoInner {
 
     pub fn send_input(&mut self, input: &str) {
         let bytes = input.as_bytes();
-        let cow = std::borrow::Cow::Owned(bytes.to_owned().into());
+        let cow = std::borrow::Cow::Owned(bytes.to_owned());
         self.term_channel.send(TermMsg::Input(cow)).unwrap();
     }
 }

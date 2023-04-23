@@ -157,8 +157,8 @@ impl FaceAtlas {
     pub fn new(face: OwnedFace, device: &Device, queue: &Queue) -> Self {
         let (atlas, _errors) = GlyphAtlas::new(face.as_face_ref()).unwrap();
 
-        let width = atlas.bitmap.width as u32;
-        let height = atlas.bitmap.height as u32;
+        let width = atlas.bitmap.width;
+        let height = atlas.bitmap.height;
 
         let size = Extent3d {
             width,
@@ -168,7 +168,7 @@ impl FaceAtlas {
 
         let texture = device.create_texture(&TextureDescriptor {
             label: Some("AlacrittyRoutine::glyph_texture"),
-            size: size.clone(),
+            size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
@@ -383,7 +383,7 @@ impl Terminal {
         let mut overlay_indices = Vec::new();
 
         let content = term.renderable_content();
-        for cell in content.display_iter.into_iter() {
+        for cell in content.display_iter {
             if cell.flags.contains(CellFlags::HIDDEN) {
                 continue;
             }
@@ -395,9 +395,7 @@ impl Terminal {
             let mut bg = cell.bg;
 
             if cell.flags.contains(CellFlags::INVERSE) {
-                let temp = fg;
-                fg = bg;
-                bg = temp;
+                std::mem::swap(&mut fg, &mut bg);
             }
 
             let style = FontStyle::from_cell_flags(cell.flags);
@@ -520,6 +518,7 @@ impl Terminal {
 }
 
 /// Generates a pipeline for either a glyph shader or a solid shader.
+#[allow(clippy::too_many_arguments)]
 fn make_pipeline(
     device: &Device,
     label: Option<&str>,

@@ -55,7 +55,7 @@ impl GlyphMtsdf {
         let width = width.max(16);
         let height = height.max(16);
         let framing = bounds
-            .autoframe(width as u32, height as u32, range, None)
+            .autoframe(width, height, range, None)
             .ok_or(FontError::AutoFraming {
                 glyph,
                 width: width as usize,

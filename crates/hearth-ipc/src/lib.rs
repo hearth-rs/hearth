@@ -209,7 +209,7 @@ pub async fn connect() -> std::io::Result<DaemonOffer> {
             let kind = ErrorKind::ConnectionReset;
             let msg = "Daemon unexpectedly hung up while waiting for offer";
             tracing::error!(msg);
-            return Err(Error::new(kind, msg));
+            Err(Error::new(kind, msg))
         }
         Err(err) => {
             let kind = ErrorKind::InvalidData;
@@ -218,7 +218,7 @@ pub async fn connect() -> std::io::Result<DaemonOffer> {
                 err
             );
             tracing::error!(msg);
-            return Err(Error::new(kind, msg));
+            Err(Error::new(kind, msg))
         }
     }
 }

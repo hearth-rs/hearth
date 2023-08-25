@@ -69,6 +69,17 @@ impl DemoInner {
         let mut colors = Colors::default();
         Self::load_colors(&mut colors);
 
+        let command: String = match std::env::consts::OS {
+            "dragonfly" | "freebsd" | "haiku" | "linux" | "macos" | "netbsd" | "openbsd"
+            | "redox" | "solaris" | "unix" => {
+                std::env::var("SHELL").expect("Couldn't get system shell: `$SHELL` not set. ")
+            }
+            "windows" => {
+                std::env::var("COMSPEC").expect("Couldn't get system shell: `%COMSPEC%` not set. ")
+            }
+            _ => todo!(),
+        };
+
         let state = TerminalState {
             position: glam::Vec3::ZERO,
             orientation: glam::Quat::IDENTITY,
@@ -76,7 +87,11 @@ impl DemoInner {
             opacity: 0.8,
         };
 
-        let config = TerminalConfig { fonts, colors };
+        let config = TerminalConfig {
+            fonts,
+            colors,
+            command,
+        };
         let terminal = Terminal::new(config.clone(), state.clone());
         let mut store = TerminalStore::new(config, renderer, surface_format);
         store.insert_terminal(&terminal);

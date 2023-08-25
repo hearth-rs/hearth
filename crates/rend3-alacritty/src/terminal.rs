@@ -71,6 +71,7 @@ impl EventListener for Listener {
 pub struct TerminalConfig {
     pub fonts: FontSet<Arc<FaceAtlas>>,
     pub colors: Colors,
+    pub command: String,
 }
 
 /// Dynamic terminal appearance and settings configuration.
@@ -145,7 +146,7 @@ impl Terminal {
 
         let (sender, term_events) = channel();
 
-        let shell = alacritty_terminal::config::Program::Just("/usr/bin/fish".into());
+        let shell = alacritty_terminal::config::Program::Just(config.command.clone().into());
 
         let term_config = alacritty_terminal::config::Config {
             pty_config: PtyConfig {

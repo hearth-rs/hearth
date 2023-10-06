@@ -32,12 +32,16 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: build
-        args: --target wasm32-unknown-unknown -p hearth-test-wasm
+        args: >
+          --target wasm32-unknown-unknown -p hearth-test-wasm
+          --manifest-path guest/rust/Cargo.toml
     - name: Run Wasm
       uses: actions-rs/cargo@v1
       with:
         command: run
-        args: --release -p hearth-cognito --example run_wasm -- guest/rust/target/wasm32-unknown-unknown/debug/hearth_test_wasm.wasm
+        args: >
+          --release -p hearth-cognito --example run_wasm
+          -- guest/rust/target/wasm32-unknown-unknown/debug/hearth_test_wasm.wasm
   test:
     runs-on: ubuntu-latest
     steps:

@@ -23,6 +23,21 @@ jobs:
       with:
         command: build
         args: --all-targets
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2.2.0
+    - name: Build Wasm test
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --target wasm32-unknown-unknown -p hearth-test-wasm
+    - name: Run Wasm
+      uses: actions-rs/cargo@v1
+      with:
+        command: run
+        args: --release -p hearth-cognito --example run_wasm -- guest/rust/target/wasm32-unknown-unknown/debug/hearth_test_wasm.wasm
   test:
     runs-on: ubuntu-latest
     steps:

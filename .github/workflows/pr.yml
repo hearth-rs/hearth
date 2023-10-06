@@ -28,6 +28,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - uses: Swatinem/rust-cache@v2.2.0
+    - name: Install wasm32-unknown-unknown target
+      uses: actions-rs/toolchain@v1
+      with:
+          profile: minimal
+          target: wasm32-unknown-unknown
     - name: Build Wasm test
       uses: actions-rs/cargo@v1
       with:

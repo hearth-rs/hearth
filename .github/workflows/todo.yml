@@ -1,0 +1,21 @@
+name: Create issues from TODOs
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  issues: write
+  repository-projects: read
+  contents: read
+
+jobs:
+  todos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Issue Bot
+        uses: derjuulsn/todo-issue@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

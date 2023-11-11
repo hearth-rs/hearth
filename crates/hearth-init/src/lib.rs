@@ -16,23 +16,53 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use hearth_core::{
-    hearth_types::{wasm::WasmSpawnInfo, Flags},
-    process::{
-        context::{ContextMessage, ContextSignal},
-        factory::ProcessInfo,
-        Process,
-    },
-    runtime::{Plugin, RuntimeBuilder},
+    async_trait, cargo_process_metadata,
+    flue::{OwnedCapability, Permissions, TableSignal},
+    hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo},
+    process::{Process, ProcessMetadata},
+    runtime::{Plugin, Runtime, RuntimeBuilder},
     tokio::{spawn, sync::oneshot::Sender},
+    utils::ProcessRunner,
 };
-use tracing::debug;
+use tracing::{debug, warn};
 
 struct Hook {
     service: String,
-    callback: Sender<(Process, usize)>,
+    callback: Sender<OwnedCapability>,
+}
+
+#[async_trait]
+impl ProcessRunner for Hook {
+    async fn run(mut self, label: String, _runtime: Arc<Runtime>, ctx: &Process) {
+        // TODO use https://github.com/hearth-rs/flue/pull/11 to break the closure out
+        while let Some(hook) = ctx
+            .borrow_parent()
+            .recv(|signal| {
+                let TableSignal::Message { data: _, caps } = signal else {
+                    tracing::error!("expected message, got {:?}", signal);
+                    return None;
+                };
+
+                let Some(init_cap) = caps.first() else {
+                    warn!("{label} hook received message with no caps");
+                    return None;
+                };
+
+                Some(*init_cap)
+            })
+            .await
+        {
+            // if we got a valid hook message, handle it and quit.
+            if let Some(init_cap) = hook {
+                let cap = ctx.borrow_table().get_owned(init_cap).unwrap();
+                let _ = self.callback.send(cap);
+                return;
+            }
+        }
+    }
 }
 
 pub struct InitPlugin {
@@ -41,30 +71,13 @@ pub struct InitPlugin {
 }
 
 impl Plugin for InitPlugin {
-    fn finalize(mut self, builder: &mut RuntimeBuilder) {
-        for hook in std::mem::take(&mut self.hooks) {
-            builder.add_service(
-                hook.service,
-                ProcessInfo {},
-                Flags::SEND,
-                move |_runtime, mut ctx| {
-                    spawn(async move {
-                        while let Some(signal) = ctx.recv().await {
-                            let ContextSignal::Message(msg) = signal else {
-                                tracing::error!("expected message, got {:?}", signal);
-                                continue;
-                            };
+    fn finalize(self, builder: &mut RuntimeBuilder) {
+        for hook in self.hooks {
+            let mut meta = cargo_process_metadata!();
+            meta.name = Some(hook.service.clone());
+            meta.description = Some("An init hook. Send a message with no data and a single capability to initialize it.".to_string());
 
-                            let Some(init_cap) = msg.caps.first() else {
-                                continue;
-                            };
-
-                            let _ = hook.callback.send((ctx, *init_cap));
-                            break;
-                        }
-                    });
-                },
-            );
+            builder.add_service(hook.service.clone(), meta, hook);
         }
 
         builder.add_runner(move |runtime| {
@@ -73,25 +86,55 @@ impl Plugin for InitPlugin {
                 let wasm_data = std::fs::read(self.init_path.clone()).unwrap();
                 let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
 
-                debug!("Running init system");
-                let mut parent = runtime.process_factory.spawn(ProcessInfo {}, Flags::SEND);
-                let wasm_spawner = parent
-                    .get_service("hearth.cognito.WasmProcessSpawner")
-                    .expect("Wasm spawner service not found");
-
                 let spawn_info = WasmSpawnInfo {
                     lump: wasm_lump,
                     entrypoint: None,
                 };
 
-                parent
+                debug!("Running init system");
+                let mut meta = cargo_process_metadata!();
+                meta.name = Some("init system parent".to_string());
+
+                let parent = runtime.process_factory.spawn(meta);
+                let response = parent.borrow_group().create_mailbox().unwrap();
+                let table = parent.borrow_table();
+                let response_cap = response.export(Permissions::SEND, table).unwrap();
+
+                let perms = Permissions::SEND | Permissions::MONITOR;
+                let registry = runtime
+                    .registry
+                    .borrow_parent()
+                    .export(perms, table)
+                    .unwrap();
+
+                let request = RegistryRequest::Get {
+                    name: "hearth.cognito.WasmProcessSpawner".to_string(),
+                };
+
+                registry
+                    .send(&serde_json::to_vec(&request).unwrap(), &[&response_cap])
+                    .await
+                    .unwrap();
+
+                let spawner = response
+                    .recv(|signal| {
+                        let TableSignal::Message { mut caps, .. } = signal else {
+                            panic!("expected message, got {:?}", signal);
+                        };
+
+                        caps.remove(0)
+                    })
+                    .await
+                    .unwrap();
+
+                let spawner = parent.borrow_table().wrap_handle(spawner).unwrap();
+
+                spawner
                     .send(
-                        wasm_spawner,
-                        ContextMessage {
-                            data: serde_json::to_vec(&spawn_info).unwrap(),
-                            caps: vec![0],
-                        },
+                        &serde_json::to_vec(&spawn_info).unwrap(),
+                        &[&response_cap, &registry],
                     )
+                    .await
                     .unwrap();
             });
         });
@@ -106,7 +149,7 @@ impl InitPlugin {
         }
     }
 
-    pub fn add_hook(&mut self, service: String, callback: Sender<(Process, usize)>) {
+    pub fn add_hook(&mut self, service: String, callback: Sender<OwnedCapability>) {
         self.hooks.push(Hook { service, callback });
     }
 }

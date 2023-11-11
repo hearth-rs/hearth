@@ -23,6 +23,7 @@ use tracing::{debug, error, info, Level};
 use tracing_subscriber::prelude::*;
 
 pub use anyhow;
+pub use flue;
 pub use hearth_types;
 pub use tokio;
 pub use tracing;
@@ -30,14 +31,17 @@ pub use tracing;
 /// Asset loading and storage.
 pub mod asset;
 
+/// Network connection.
+pub mod connection;
+
 /// Lump loading and storage.
 pub mod lump;
 
-/// Process interfaces and message routing.
+/// Local process spawning and management.
 pub mod process;
 
-/// Publish-subscribe utility struct for making pub-sub services.
-// pub mod pubsub;
+/// The native registry implementation.
+pub mod registry;
 
 /// Peer runtime building and execution.
 pub mod runtime;

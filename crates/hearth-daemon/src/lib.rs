@@ -23,7 +23,8 @@ use std::{
 };
 
 use hearth_core::{
-    process::{Connection, Process},
+    connection::Connection,
+    flue::OwnedCapability,
     runtime::{Plugin, Runtime, RuntimeBuilder},
     tokio::{
         self,
@@ -117,6 +118,7 @@ impl Listener {
     }
 }
 
+#[derive(Default)]
 pub struct DaemonPlugin {}
 
 impl Plugin for DaemonPlugin {
@@ -132,7 +134,7 @@ impl Plugin for DaemonPlugin {
             tokio::spawn(async move {
                 tracing::info!("Waiting for IPC daemon hook...");
 
-                let (root_ctx, root_handle) = match root_rx.await {
+                let root_cap = match root_rx.await {
                     Ok(root) => root,
                     Err(err) => {
                         tracing::warn!("error while waiting for daemon root cap: {}", err);
@@ -152,7 +154,7 @@ impl Plugin for DaemonPlugin {
 
                 loop {
                     let transport = listener.accept_next().await;
-                    self.on_accept(&root_ctx, root_handle, &runtime, transport);
+                    self.on_accept(root_cap.clone(), &runtime, transport);
                 }
             });
         });
@@ -160,32 +162,18 @@ impl Plugin for DaemonPlugin {
 }
 
 impl DaemonPlugin {
-    pub fn new() -> Self {
-        Self {}
-    }
-
     /// Performs a connection handshake with an IPC client and adds the new
     /// connection to the runtime.
     pub fn on_accept(
         &mut self,
-        root_ctx: &Process,
-        root_handle: usize,
+        root_cap: OwnedCapability,
         runtime: &Arc<Runtime>,
         transport: hearth_ipc::Connection,
     ) {
         tracing::info!("Beginning IPC connection");
-        let conn = Connection::new(
-            runtime.process_store.clone(),
-            transport.op_rx,
-            transport.op_tx,
-            None,
-        );
+        let conn = Connection::begin(runtime.post.clone(), transport.op_rx, transport.op_tx, None);
 
         tracing::info!("Sending the IPC client our root cap");
-        let mut conn = conn.lock();
-        let result = root_ctx.export_connection_root(root_handle, &mut conn);
-        if let Err(err) = result {
-            tracing::error!("error while sending IPC client root cap: {:?}", err);
-        }
+        conn.export_root(root_cap);
     }
 }

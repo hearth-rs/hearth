@@ -16,35 +16,84 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{any::type_name, sync::Arc};
+use std::{any::type_name, fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
-use hearth_types::Flags;
+use flue::{CapabilityRef, OwnedTableSignal};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, trace};
 
 use crate::{
-    process::{
-        context::{ContextMessage, ContextSignal},
-        factory::ProcessInfo,
-        Process,
-    },
+    process::{Process, ProcessMetadata},
     runtime::{Plugin, Runtime, RuntimeBuilder},
 };
 
-/// Context for an incoming message in [SinkProcess] or [RequestResponseProcess].
-pub struct RequestInfo<'a, T> {
-    /// The capability handle of the first capability from the message.
-    pub reply: usize,
+/// Helper macro to initialize [ProcessMetadata] using Cargo environment variables.
+///
+/// This macro initializes these [ProcessMetadata] fields with `CARGO_PKG_*`
+/// environment variables:
+/// - `authors`: `CARGO_PKG_AUTHORS`
+/// - `repository`: `CARGO_PKG_REPOSITORY`
+/// - `homepage`: `CARGO_PKG_HOMEPAGE`
+/// - `license`: `CARGO_PKG_LICENSE`
+#[macro_export]
+macro_rules! cargo_process_metadata {
+    () => {{
+        let mut meta = ProcessMetadata::default();
 
-    /// The rest of the capabilities from the message.
-    ///
-    /// These are automatically freed after this message's callback is handled,
-    /// so make a copy of it if it needs to be kept around.
-    pub cap_args: &'a [usize],
+        // returns `None` if the string is empty, or `Some(str)` otherwise.
+        let some_or_empty = |str: &str| {
+            if str.is_empty() {
+                None
+            } else {
+                Some(str.to_string())
+            }
+        };
+
+        meta.authors = some_or_empty(env!("CARGO_PKG_AUTHORS"))
+            .map(|authors| authors.split(':').map(ToString::to_string).collect());
+
+        meta.repository = some_or_empty(env!("CARGO_PKG_REPOSITORY"));
+        meta.homepage = some_or_empty(env!("CARGO_PKG_HOMEPAGE"));
+        meta.license = some_or_empty(env!("CARGO_PKG_LICENSE"));
+        meta
+    }};
+}
+
+// export the macro so we can use it in other modules in this crate
+pub(crate) use cargo_process_metadata;
+
+/// Context for an incoming message in [SinkProcess].
+pub struct MessageInfo<'a, T> {
+    /// This process's label.
+    pub label: &'a str,
 
     /// The [Process] that has received this message.
-    pub ctx: &'a mut Process,
+    pub process: &'a Process,
+
+    /// A handle to the [Runtime] this process is running in.
+    pub runtime: &'a Arc<Runtime>,
+
+    /// The deserialized data of the message's contents.
+    pub data: T,
+
+    /// The capabilities from this message.
+    pub caps: &'a [CapabilityRef<'a>],
+}
+
+/// Context for an incoming message in [RequestResponseProcess].
+pub struct RequestInfo<'a, T> {
+    /// This process's label.
+    pub label: &'a str,
+
+    /// The [Process] that has received this message.
+    pub process: &'a Process,
+
+    /// The capability handle of the first capability from the message.
+    pub reply: CapabilityRef<'a>,
+
+    /// The rest of the capabilities from the message.
+    pub cap_args: &'a [CapabilityRef<'a>],
 
     /// A handle to the [Runtime] this process is running in.
     pub runtime: &'a Arc<Runtime>,
@@ -53,18 +102,28 @@ pub struct RequestInfo<'a, T> {
     pub data: T,
 }
 
-pub struct ResponseInfo<T> {
+pub struct ResponseInfo<'a, T>
+where
+    T: Send,
+{
     pub data: T,
-    pub caps: Vec<usize>,
+    pub caps: Vec<CapabilityRef<'a>>,
 }
 
-impl<T> From<T> for ResponseInfo<T> {
+impl<'a, T> From<T> for ResponseInfo<'a, T>
+where
+    T: Send,
+{
     fn from(data: T) -> Self {
         Self { data, caps: vec![] }
     }
 }
 
-impl<O, E> From<E> for ResponseInfo<Result<O, E>> {
+impl<'a, O, E> From<E> for ResponseInfo<'a, Result<O, E>>
+where
+    O: Send,
+    E: Send,
+{
     fn from(err: E) -> Self {
         Self {
             data: Err(err),
@@ -75,12 +134,12 @@ impl<O, E> From<E> for ResponseInfo<Result<O, E>> {
 
 /// A trait for types that implement process behavior.
 #[async_trait]
-pub trait ProcessRunner: Send + 'static {
+pub trait ProcessRunner: Send {
     /// Executes this process.
     ///
     /// Takes ownership of this object and provides a dev-facing label, a handle
     /// to the runtime, and an existing [Process] instance as context.
-    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: Process);
+    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: &Process);
 }
 
 /// A trait for process runners that continuously receive JSON-formatted messages of a single type.
@@ -89,12 +148,18 @@ pub trait ProcessRunner: Send + 'static {
 /// receives new messages of the given data type, and calls [Self::on_message]
 /// with a [RequestInfo].
 #[async_trait]
-pub trait SinkProcess: Send + Sync + 'static {
+pub trait SinkProcess: Send + Sync {
     /// The deserializeable data type to be received.
-    type Message: for<'a> Deserialize<'a> + Send + Sync;
+    type Message: for<'a> Deserialize<'a> + Send + Sync + Debug;
 
     /// A callback to call when messages are received by this process.
-    async fn on_message(&mut self, message: &mut RequestInfo<'_, Self::Message>);
+    async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, Self::Message>);
+
+    /// A callback to call when a down signal is received by this process.
+    ///
+    /// The capability passed is the capability in the down signal; a version
+    /// of the monitored capability with no permissions.
+    async fn on_down<'a>(&'a mut self, _cap: CapabilityRef<'a>) {}
 }
 
 #[async_trait]
@@ -102,60 +167,59 @@ impl<T> ProcessRunner for T
 where
     T: SinkProcess,
 {
-    async fn run(mut self, label: String, runtime: Arc<Runtime>, mut ctx: Process) {
-        while let Some(signal) = ctx.recv().await {
-            let ContextSignal::Message(msg) = signal else {
-                // TODO make this a process log
-                warn!("{:?} expected message but received: {:?}", label, signal);
-                continue;
-            };
+    async fn run(mut self, label: String, runtime: Arc<Runtime>, ctx: &Process) {
+        loop {
+            let recv = ctx.borrow_parent().recv_owned().await;
 
-            let Some(reply) = msg.caps.first().copied() else {
-                // TODO make this a process log
-                debug!("Request to {:?} has no reply address", label);
-                continue;
-            };
+            use OwnedTableSignal::*;
+            match recv {
+                Some(Message { data, caps }) => {
+                    let data: T::Message = match serde_json::from_slice(&data) {
+                        Ok(request) => request,
+                        Err(err) => {
+                            // TODO make this a process log
+                            debug!("Failed to parse {}: {:?}", type_name::<T::Message>(), err);
+                            continue;
+                        }
+                    };
 
-            let free_caps = |ctx: &mut Process| {
-                for cap in msg.caps.iter() {
-                    ctx.delete_capability(*cap).unwrap();
+                    trace!("{:?} received {:?}", label, data);
+
+                    self.on_message(MessageInfo {
+                        label: &label,
+                        process: ctx,
+                        runtime: &runtime,
+                        data,
+                        caps: &caps,
+                    })
+                    .await;
+
+                    trace!("{:?} finished processing message", label);
                 }
-            };
-
-            let data: T::Message = match serde_json::from_slice(&msg.data) {
-                Ok(request) => request,
-                Err(err) => {
-                    // TODO make this a process log
-                    debug!("Failed to parse {}: {:?}", type_name::<T::Message>(), err);
-                    free_caps(&mut ctx);
-                    continue;
+                Some(Down { handle }) => {
+                    self.on_down(handle).await;
                 }
-            };
-
-            let mut message = RequestInfo {
-                reply,
-                cap_args: &msg.caps[1..],
-                ctx: &mut ctx,
-                runtime: &runtime,
-                data,
-            };
-
-            self.on_message(&mut message).await;
-
-            free_caps(&mut ctx);
+                None => break, // killed; quit
+            }
         }
     }
 }
 
 #[async_trait]
-pub trait RequestResponseProcess: Send + Sync + 'static {
-    type Request: for<'a> Deserialize<'a> + Send + Sync;
-    type Response: Serialize;
+pub trait RequestResponseProcess: Send + Sync {
+    type Request: for<'a> Deserialize<'a> + Send + Sync + Debug;
+    type Response: Serialize + Send + Debug;
 
-    async fn on_request(
-        &mut self,
-        request: &mut RequestInfo<'_, Self::Request>,
-    ) -> ResponseInfo<Self::Response>;
+    async fn on_request<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, Self::Request>,
+    ) -> ResponseInfo<'a, Self::Response>;
+
+    /// A callback to call when a down signal is received by this process.
+    ///
+    /// The capability passed is the capability in the down signal; a version
+    /// of the monitored capability with no permissions.
+    async fn on_down<'a>(&'a mut self, _cap: CapabilityRef<'a>) {}
 }
 
 #[async_trait]
@@ -165,43 +229,54 @@ where
 {
     type Message = T::Request;
 
-    async fn on_message(&mut self, message: &mut RequestInfo<'_, Self::Message>) {
-        let response = self.on_request(message).await;
-        let response_data = serde_json::to_vec(&response.data).unwrap();
+    async fn on_message<'a>(&'a mut self, message: MessageInfo<'a, Self::Message>) {
+        let Some(reply) = message.caps.first().cloned() else {
+            debug!("Request to {:?} has no reply address", message.label);
+            return;
+        };
 
-        message
-            .ctx
-            .send(
-                message.reply,
-                ContextMessage {
-                    data: response_data,
-                    caps: response.caps.clone(),
-                },
-            )
-            .unwrap();
+        let mut request = RequestInfo {
+            label: message.label,
+            process: message.process,
+            reply: reply.clone(),
+            cap_args: &message.caps[1..],
+            runtime: message.runtime,
+            data: message.data,
+        };
 
-        for cap in response.caps {
-            message.ctx.delete_capability(cap).unwrap();
+        let response = self.on_request(&mut request).await;
+        let data = serde_json::to_vec(&response.data).unwrap();
+        let caps: Vec<_> = response.caps.iter().collect();
+        let result = reply.send(&data, &caps).await;
+
+        if let Err(err) = result {
+            debug!("{:?} reply error: {:?}", message.label, err);
         }
+    }
+
+    async fn on_down<'a>(&'a mut self, cap: CapabilityRef<'a>) {
+        // clarify trait so we don't make this function recursive
+        <T as RequestResponseProcess>::on_down(self, cap).await;
     }
 }
 
 pub trait ServiceRunner: ProcessRunner {
     const NAME: &'static str;
+
+    /// Gets the [ProcessMetadata] for this service.
+    ///
+    /// The `name` field of this struct is overridden by [Self::NAME].
+    fn get_process_metadata() -> ProcessMetadata;
 }
 
 impl<T> Plugin for T
 where
-    T: ServiceRunner + Send + Sync,
+    T: ServiceRunner + Send + Sync + 'static,
 {
     fn finalize(self, builder: &mut RuntimeBuilder) {
-        builder.add_service(
-            Self::NAME.to_string(),
-            ProcessInfo {},
-            Flags::SEND,
-            move |runtime, ctx| {
-                tokio::spawn(self.run(Self::NAME.to_string(), runtime, ctx));
-            },
-        );
+        let name = Self::NAME.to_string();
+        let mut meta = Self::get_process_metadata();
+        meta.name = Some(name.clone());
+        builder.add_service(name, meta, self);
     }
 }

@@ -27,13 +27,15 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hearth_types::Flags;
+use flue::PostOffice;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, warn};
 
 use crate::asset::{AssetLoader, AssetStore};
 use crate::lump::LumpStoreImpl;
-use crate::process::factory::ProcessInfo;
+use crate::process::{Process, ProcessFactory, ProcessMetadata};
+use crate::registry::RegistryBuilder;
+use crate::utils::ProcessRunner;
 
 /// Interface trait for plugins to the Hearth runtime.
 ///
@@ -69,6 +71,9 @@ pub struct RuntimeBuilder {
     runners: Vec<Box<dyn FnOnce(Arc<Runtime>) + Send>>,
     services: HashSet<String>,
     lump_store: Arc<LumpStoreImpl>,
+    post: Arc<PostOffice>,
+    process_factory: ProcessFactory,
+    registry_builder: RegistryBuilder,
     asset_store: AssetStore,
     service_num: usize,
     service_start_tx: UnboundedSender<String>,
@@ -81,6 +86,9 @@ impl RuntimeBuilder {
         let lump_store = Arc::new(LumpStoreImpl::new());
         let asset_store = AssetStore::new(lump_store.clone());
         let (service_start_tx, service_start_rx) = unbounded_channel();
+        let post = PostOffice::new();
+        let process_factory = ProcessFactory::new(post.clone());
+        let registry_builder = RegistryBuilder::new(post.clone());
 
         Self {
             config_file,
@@ -89,6 +97,9 @@ impl RuntimeBuilder {
             runners: Default::default(),
             services: Default::default(),
             lump_store,
+            post,
+            process_factory,
+            registry_builder,
             asset_store,
             service_num: 0,
             service_start_tx,
@@ -170,9 +181,8 @@ impl RuntimeBuilder {
     pub fn add_service(
         &mut self,
         name: String,
-        info: ProcessInfo,
-        flags: Flags,
-        cb: impl FnOnce(Arc<Runtime>, crate::process::Process) + Send + 'static,
+        meta: ProcessMetadata,
+        process: impl ProcessRunner + 'static,
     ) -> &mut Self {
         if self.services.contains(&name) {
             error!("Service name {} is taken", name);
@@ -182,23 +192,15 @@ impl RuntimeBuilder {
         let service_start_tx = self.service_start_tx.clone();
         self.service_num += 1;
 
+        let ctx = self.process_factory.spawn(meta);
+        self.registry_builder.add(name.clone(), ctx.borrow_parent());
         self.services.insert(name.clone());
+
         self.add_runner(move |runtime| {
             tokio::spawn(async move {
                 debug!("Spawning '{}' service", name);
-                let process = runtime.process_factory.spawn(info, flags);
-                let self_cap = process
-                    .get_cap(0)
-                    .expect("freshly-spawned process has no self cap")
-                    .clone(runtime.process_store.as_ref());
-                if let Some(old_cap) = runtime.process_registry.insert(name.clone(), self_cap) {
-                    warn!("Service name {:?} was taken; replacing", name);
-                    old_cap.free(runtime.process_store.as_ref());
-                }
-
-                let _ = service_start_tx.send(name);
-
-                cb(runtime, process);
+                let _ = service_start_tx.send(name.clone());
+                process.run(name, runtime, &ctx).await;
             });
         });
 
@@ -248,24 +250,37 @@ impl RuntimeBuilder {
             finalize(plugin, &mut self);
         }
 
-        use crate::process::*;
+        // finalize registry
+        let RegistryBuilder {
+            table: registry_table,
+            inner: registry_inner,
+        } = self.registry_builder;
 
-        let process_store = Arc::new(ProcessStore::default());
-        let process_registry = Arc::new(Registry::new(process_store.clone()));
-        let process_factory = Arc::new(ProcessFactory::new(
-            process_store.clone(),
-            process_registry.clone(),
-        ));
+        let meta = ProcessMetadata {
+            name: Some("Registry".to_string()),
+            description: Some("Hearth's native service registry.".to_string()),
+            ..crate::utils::cargo_process_metadata!()
+        };
 
-        let lump_store = self.lump_store;
+        let ctx = self.process_factory.spawn_with_table(meta, registry_table);
+        let registry = Arc::new(ctx);
 
         let runtime = Arc::new(Runtime {
             asset_store: Arc::new(self.asset_store),
-            lump_store,
-            process_store,
-            process_registry,
-            process_factory,
+            lump_store: self.lump_store,
             config,
+            post: self.post,
+            process_factory: self.process_factory,
+            registry: registry.clone(),
+        });
+
+        tokio::spawn({
+            let runtime = runtime.clone();
+            async move {
+                registry_inner
+                    .run("Registry".to_string(), runtime, &registry)
+                    .await;
+            }
         });
 
         debug!("Running runners");
@@ -312,12 +327,14 @@ pub struct Runtime {
     /// This runtime's lump store.
     pub lump_store: Arc<LumpStoreImpl>,
 
-    /// This runtime's process store.
-    pub process_store: Arc<crate::process::ProcessStore>,
+    /// This runtime's post office.
+    pub post: Arc<PostOffice>,
 
-    /// This runtime's process registry.
-    pub process_registry: Arc<crate::process::Registry>,
+    /// This runtime's local process factory.
+    pub process_factory: ProcessFactory,
 
-    /// This runtime's process factory.
-    pub process_factory: Arc<crate::process::ProcessFactory>,
+    /// A shared handle to this runtime's native registry.
+    ///
+    /// Access the `parent` field on it to gain a capability to it.
+    pub registry: Arc<Process>,
 }

@@ -18,13 +18,13 @@
 
 use std::sync::Arc;
 
-use glam::UVec2;
+use glam::{UVec2, Vec4};
 use hearth_core::runtime::{Plugin, RuntimeBuilder};
 use rend3::graph::{ReadyData, RenderGraph};
 use rend3::types::{Camera, SampleCount};
 use rend3::util::output::OutputFrame;
 use rend3::{InstanceAdapterDevice, Renderer};
-use rend3_routine::base::BaseRenderGraph;
+use rend3_routine::base::{BaseRenderGraph, BaseRenderGraphIntermediateState};
 use rend3_routine::pbr::PbrRoutine;
 use rend3_routine::tonemapping::TonemappingRoutine;
 use tokio::sync::{mpsc, oneshot};
@@ -36,6 +36,7 @@ pub use wgpu;
 
 /// The info about a frame passed to [Routine::draw].
 pub struct RoutineInfo<'a, 'graph> {
+    pub state: &'a BaseRenderGraphIntermediateState,
     pub sample_count: SampleCount,
     pub resolution: UVec2,
     pub ready_data: &'a ReadyData,
@@ -139,31 +140,61 @@ impl Rend3Plugin {
             .map(|routine| routine.build_node())
             .collect();
 
-        let mut graph = RenderGraph::new();
+        let mut graph_data = RenderGraph::new();
+        let graph = &mut graph_data;
+        let samples = SampleCount::One;
+        let base = &self.base_render_graph;
+        let ambient = Vec4::ZERO;
+        let pbr = &self.pbr_routine;
+        let skybox = None;
 
-        self.base_render_graph.add_to_graph(
-            &mut graph,
-            &ready,
-            &self.pbr_routine,
-            None,
-            &self.tonemapping_routine,
-            request.resolution,
-            SampleCount::One,
-            glam::Vec4::ZERO,
-        );
+        // see implementation of BaseRenderGraph::add_to_graph() for details
+        // on what the following code is based on
+        //
+        // we need to override this function so that we can hook into the
+        // graph's state in our custom nodes
+        let state =
+            BaseRenderGraphIntermediateState::new(graph, &ready, request.resolution, samples);
+
+        // Preparing and uploading data
+        state.pre_skinning(graph);
+        state.pbr_pre_culling(graph);
+        state.create_frame_uniforms(graph, base, ambient);
+
+        // Skinning
+        state.skinning(graph, base);
+
+        // Culling
+        state.pbr_shadow_culling(graph, base, pbr);
+        state.pbr_culling(graph, base, pbr);
+
+        // Depth-only rendering
+        state.pbr_shadow_rendering(graph, pbr);
+        state.pbr_prepass_rendering(graph, pbr, samples);
+
+        // Skybox
+        state.skybox(graph, skybox, samples);
+
+        // Forward rendering
+        state.pbr_forward_rendering(graph, pbr, samples);
+
+        // Make the reference to the surface
+        let surface = graph.add_surface_texture();
+        state.tonemapping(graph, &self.tonemapping_routine, surface);
 
         let mut info = RoutineInfo {
+            state: &state,
             sample_count: SampleCount::One,
             resolution: request.resolution,
             ready_data: &ready,
-            graph: &mut graph,
+            graph,
         };
 
         for node in nodes.iter() {
             node.draw(&mut info);
         }
 
-        graph.execute(&self.renderer, request.output_frame, cmd_bufs, &ready);
+        graph_data.execute(&self.renderer, request.output_frame, cmd_bufs, &ready);
 
         let _ = request.on_complete.send(()); // ignore hangup
     }

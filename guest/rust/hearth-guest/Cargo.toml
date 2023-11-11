@@ -5,6 +5,7 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+bitflags = { workspace = true }
 hearth-types = { workspace = true }
 lazy_static = "1.4"
 serde = { workspace = true }

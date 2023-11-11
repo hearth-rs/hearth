@@ -6,15 +6,20 @@ on:
     paths:
       - "**/Cargo.toml"
       - "**.rs"
+      - ".github/**"
   pull_request:
     branches: [ "main" ]
     paths:
       - "**/Cargo.toml"
       - "**.rs"
+      - ".github/**"
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
     - uses: Swatinem/rust-cache@v2.2.0

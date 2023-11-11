@@ -5,11 +5,12 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
-glam = "0.20"
 clap = { version= "3.2", features = ["derive"] }
+glam = { workspace = true }
 hearth-cognito = { workspace = true }
 hearth-core = { workspace = true }
 hearth-daemon = { workspace = true }
+hearth-debug-draw = { workspace = true }
 hearth-fs = { workspace = true }
 hearth-init = { workspace = true }
 hearth-network = { workspace = true }

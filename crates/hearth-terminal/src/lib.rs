@@ -19,26 +19,25 @@
 use std::sync::Arc;
 
 use hearth_core::{
-    async_trait,
-    process::factory::ProcessInfo,
+    async_trait, cargo_process_metadata,
+    flue::Permissions,
+    process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     tokio::{
         self,
         sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     },
-    utils::{
-        ProcessRunner, RequestInfo, RequestResponseProcess, ResponseInfo, ServiceRunner,
-        SinkProcess,
-    },
+    utils::*,
 };
 use hearth_rend3::*;
-use hearth_types::{terminal::*, Flags};
+use hearth_types::terminal::*;
 use rend3_alacritty::{
     terminal::{Terminal, TerminalConfig, TerminalState},
     text::{FaceAtlas, FontSet},
     *,
 };
-use rend3_routine::base::BaseRenderGraphIntermediateState;
+
+pub use rend3_alacritty;
 
 pub struct TerminalRoutine {
     store: TerminalStore,
@@ -76,15 +75,8 @@ pub struct TerminalNode<'a> {
 
 impl<'a> Node<'a> for TerminalNode<'a> {
     fn draw<'graph>(&'graph self, info: &mut RoutineInfo<'_, 'graph>) {
-        let state = BaseRenderGraphIntermediateState::new(
-            info.graph,
-            info.ready_data,
-            info.resolution,
-            info.sample_count,
-        );
-
         let output = info.graph.add_surface_texture();
-        let depth = state.depth;
+        let depth = info.state.depth;
         self.routine.add_to_graph(info.graph, output, depth);
     }
 }
@@ -104,27 +96,29 @@ pub fn convert_state(state: &hearth_types::terminal::TerminalState) -> TerminalS
 
 /// Guest-exposed terminal process.
 pub struct TerminalSink {
-    inner: Option<Arc<Terminal>>,
+    inner: Arc<Terminal>,
+}
+
+impl Drop for TerminalSink {
+    fn drop(&mut self) {
+        self.inner.quit();
+    }
 }
 
 #[async_trait]
 impl SinkProcess for TerminalSink {
     type Message = TerminalUpdate;
 
-    async fn on_message(&mut self, request: &mut RequestInfo<'_, Self::Message>) {
-        let Some(inner) = self.inner.as_ref() else {
-            return;
-        };
-
+    async fn on_message<'a>(&'a mut self, request: MessageInfo<'a, Self::Message>) {
         match &request.data {
             TerminalUpdate::Quit => {
-                self.inner.take();
+                self.inner.quit();
             }
             TerminalUpdate::Input(input) => {
-                inner.send_input(input);
+                self.inner.send_input(input);
             }
             TerminalUpdate::State(state) => {
-                inner.update(convert_state(state));
+                self.inner.update(convert_state(state));
             }
         }
     }
@@ -141,26 +135,43 @@ impl RequestResponseProcess for TerminalFactory {
     type Request = FactoryRequest;
     type Response = FactoryResponse;
 
-    async fn on_request(
-        &mut self,
-        request: &mut RequestInfo<'_, Self::Request>,
-    ) -> ResponseInfo<Self::Response> {
+    async fn on_request<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, Self::Request>,
+    ) -> ResponseInfo<'a, Self::Response> {
         let FactoryRequest::CreateTerminal(state) = &request.data;
 
         let state = convert_state(state);
         let terminal = Terminal::new(self.config.clone(), state);
         let _ = self.new_terminals_tx.send(terminal.clone());
 
-        let sink = TerminalSink {
-            inner: Some(terminal),
-        };
+        let sink = TerminalSink { inner: terminal };
 
-        let info = ProcessInfo {};
-        let flags = Flags::SEND | Flags::KILL;
-        let child = request.runtime.process_factory.spawn(info, flags);
-        let child_cap = request.ctx.copy_self_capability(&child);
+        // create metadata for the child TerminalSink since it's a sink, not a
+        // service, and it doesn't have get_process_metadata()
+        let mut meta = cargo_process_metadata!();
+        meta.name = Some("TerminalSink".to_string());
+        meta.description = Some("An instance of a terminal. Accepts TerminalUpdate.".to_string());
 
-        tokio::spawn(sink.run("TerminalSink".to_string(), request.runtime.clone(), child));
+        let child = request.runtime.process_factory.spawn(meta);
+        let perms = Permissions::SEND | Permissions::KILL;
+        // TODO https://github.com/hearth-rs/flue/pull/9 makes this cleaner
+        let child_cap = child.borrow_parent().export_owned(perms);
+        let child_cap = request
+            .process
+            .borrow_table()
+            .import_owned(child_cap)
+            .unwrap();
+        let child_cap = request
+            .process
+            .borrow_table()
+            .wrap_handle(child_cap)
+            .unwrap();
+
+        let runtime = request.runtime.clone();
+        tokio::spawn(async move {
+            sink.run("TerminalSink".to_string(), runtime, &child).await;
+        });
 
         ResponseInfo {
             data: Ok(FactorySuccess::Terminal),
@@ -171,8 +182,18 @@ impl RequestResponseProcess for TerminalFactory {
 
 impl ServiceRunner for TerminalFactory {
     const NAME: &'static str = "hearth.terminal.TerminalFactory";
+
+    fn get_process_metadata() -> ProcessMetadata {
+        let mut meta = cargo_process_metadata!();
+        meta.description = Some(
+            "The native terminal emulator factory service. Accepts FactoryRequest.".to_string(),
+        );
+
+        meta
+    }
 }
 
+#[derive(Default)]
 pub struct TerminalPlugin {}
 
 impl Plugin for TerminalPlugin {
@@ -212,11 +233,5 @@ impl Plugin for TerminalPlugin {
             config,
             new_terminals_tx,
         });
-    }
-}
-
-impl TerminalPlugin {
-    pub fn new() -> Self {
-        Self {}
     }
 }

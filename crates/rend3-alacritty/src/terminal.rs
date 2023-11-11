@@ -42,7 +42,7 @@ use mio_extras::channel::Sender as MioSender;
 use owned_ttf_parser::AsFaceRef;
 use wgpu::{
     self, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, Buffer, BufferAddress,
-    BufferDescriptor, BufferUsages, Device,
+    BufferDescriptor, BufferUsages, Device, Queue,
 };
 
 use crate::{
@@ -112,7 +112,14 @@ impl Default for TerminalState {
         let mut colors = Colors::default();
 
         let maps = [
-            (Black, Rgb { r: 0, g: 0, b: 0 }),
+            (
+                Black,
+                Rgb {
+                    r: 16,
+                    g: 16,
+                    b: 16,
+                },
+            ),
             (Red, Rgb { r: 255, g: 0, b: 0 }),
             (Green, Rgb { r: 0, g: 255, b: 0 }),
             (Blue, Rgb { r: 0, g: 0, b: 255 }),
@@ -187,7 +194,6 @@ impl Default for TerminalState {
 pub struct FaceWithMetrics {
     atlas: Arc<FaceAtlas>,
     ascender: f32,
-    descender: f32,
     width: f32,
     height: f32,
     strikeout_pos: f32,
@@ -225,7 +231,6 @@ impl From<Arc<FaceAtlas>> for FaceWithMetrics {
         Self {
             atlas,
             ascender,
-            descender,
             height,
             width,
             strikeout_pos,
@@ -290,6 +295,9 @@ impl Terminal {
             },
             ..Default::default()
         };
+
+        // setup environment variables
+        alacritty_terminal::tty::setup_env(&term_config);
 
         let term_listener = Listener::new(sender.clone());
 
@@ -386,6 +394,10 @@ impl Terminal {
         canvas.apply_to_state(draw);
     }
 
+    pub fn quit(&self) {
+        self.should_quit.store(true, Ordering::Relaxed);
+    }
+
     pub fn should_quit(&self) -> bool {
         self.should_quit.load(Ordering::Relaxed)
     }
@@ -417,6 +429,7 @@ impl Terminal {
 /// A ready-to-render terminal state.
 pub struct TerminalDrawState {
     pub device: Arc<Device>,
+    pub queue: Arc<Queue>,
     pub model: Mat4,
     pub camera_buffer: Buffer,
     pub camera_bind_group: BindGroup,
@@ -426,7 +439,7 @@ pub struct TerminalDrawState {
 }
 
 impl TerminalDrawState {
-    pub fn new(device: Arc<Device>, camera_bgl: &BindGroupLayout) -> Self {
+    pub fn new(device: Arc<Device>, queue: Arc<Queue>, camera_bgl: &BindGroupLayout) -> Self {
         let camera_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("Alacritty terminal camera buffer"),
             size: std::mem::size_of::<CameraUniform>() as BufferAddress,
@@ -447,15 +460,19 @@ impl TerminalDrawState {
             model: Mat4::IDENTITY,
             camera_buffer,
             camera_bind_group,
-            bg_mesh: DynamicMesh::new(&device),
+            bg_mesh: DynamicMesh::new(&device, Some("Alacritty background mesh".into())),
             glyph_meshes: FontSet {
-                regular: DynamicMesh::new(&device),
-                italic: DynamicMesh::new(&device),
-                bold: DynamicMesh::new(&device),
-                bold_italic: DynamicMesh::new(&device),
+                regular: DynamicMesh::new(&device, Some("Alacritty regular glyph mesh".into())),
+                italic: DynamicMesh::new(&device, Some("Alacritty italic glyph mesh".into())),
+                bold: DynamicMesh::new(&device, Some("Alacritty bold glyph mesh".into())),
+                bold_italic: DynamicMesh::new(
+                    &device,
+                    Some("Alacritty bold italic glyph mesh".into()),
+                ),
             },
-            overlay_mesh: DynamicMesh::new(&device),
+            overlay_mesh: DynamicMesh::new(&device, Some("Alacritty overlay mesh".into())),
             device,
+            queue,
         }
     }
 }
@@ -558,16 +575,22 @@ impl TerminalCanvas {
             .as_mut()
             .zip(glyph_meshes)
             .for_each(|(mesh, (vertices, indices))| {
-                mesh.update(&state.device, &vertices, &indices)
+                mesh.update(&state.device, &state.queue, &vertices, &indices)
             });
 
-        state
-            .bg_mesh
-            .update(&state.device, &self.bg_vertices, &self.bg_indices);
+        state.bg_mesh.update(
+            &state.device,
+            &state.queue,
+            &self.bg_vertices,
+            &self.bg_indices,
+        );
 
-        state
-            .overlay_mesh
-            .update(&state.device, &self.overlay_vertices, &self.overlay_indices);
+        state.overlay_mesh.update(
+            &state.device,
+            &state.queue,
+            &self.overlay_vertices,
+            &self.overlay_indices,
+        );
 
         state.model =
             Mat4::from_translation(self.state.position) * Mat4::from_quat(self.state.orientation);

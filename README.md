@@ -131,3 +131,30 @@ Example:
 ```sh
 hearth-server --help # prints usage info for the Hearth server
 ```
+
+# Workspace Layout
+
+Hearth's codebase is composed of a single Rust workspace divided into many
+crates, each with a dedicated purpose. Here are a few specific, important crates
+to be aware of:
+
+- **hearth-core**: a common library that provides the APIs for plugins, asset
+    loading, the lump store, and runtime building. Because the `hearth-core`
+    API is essential to most Hearth functionality, most crates in the Hearth
+    codebase depend on it.
+- **hearth-types**: a schema crate that defines the guest-to-host message
+    protocols. Since the purpose of most Hearth crates is to provide some kind
+    of native resource to guest processes, most crates depend on `hearth-types`.
+- **hearth-client** and **hearth-server**: the main Hearth application binaries,
+    implementing the client and server, respectively. Each depends on a variety
+    of plugin crates, since they build and run the runtimes that use those
+    plugins.
+- **hearth-ctl**: a command-line IPC client to perform common operations on
+    a Hearth runtime. Only depends on `hearth-types` to define the IPC protocol
+    and `hearth-ipc` to implement OS-specific IPC transport mechanisms.
+
+Outside of these special cases, the rest of the crates in the Hearth codebase
+implement plugins. Here's a dependency graph of the whole workspace, excluding
+`hearth-core` and `hearth-types` to declutter:
+
+![A dependency graph of the Hearth codebase.](resources/misc/depgraph.png)

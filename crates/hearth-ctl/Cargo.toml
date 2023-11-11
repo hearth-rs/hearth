@@ -10,4 +10,3 @@ hearth-ipc = { workspace = true }
 hearth-types = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1.24", features = ["macros", "net", "rt", "signal"] }
-yacexits = "0.1"

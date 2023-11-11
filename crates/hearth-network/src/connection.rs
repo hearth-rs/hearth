@@ -16,18 +16,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use flume::{unbounded, Receiver, Sender};
 use hearth_types::protocol::CapOperation;
-use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub struct Connection {
     /// An outgoing channel for capability operations.
-    pub op_tx: UnboundedSender<CapOperation>,
+    pub op_tx: Sender<CapOperation>,
 
     /// A channel for incoming capability operations.
-    pub op_rx: UnboundedReceiver<CapOperation>,
+    pub op_rx: Receiver<CapOperation>,
 }
 
 impl Connection {
@@ -36,11 +34,11 @@ impl Connection {
         mut rx: impl AsyncRead + Unpin + Send + 'static,
         mut tx: impl AsyncWrite + Unpin + Send + 'static,
     ) -> Self {
-        let (outgoing_tx, mut outgoing_rx) = unbounded_channel();
-        let (incoming_tx, incoming_rx) = unbounded_channel();
+        let (outgoing_tx, outgoing_rx) = unbounded();
+        let (incoming_tx, incoming_rx) = unbounded();
 
         tokio::spawn(async move {
-            while let Some(op) = outgoing_rx.recv().await {
+            while let Ok(op) = outgoing_rx.recv_async().await {
                 let payload = bincode::serialize(&op).unwrap();
                 let len = payload.len() as u32;
                 tx.write_u32_le(len).await.unwrap();

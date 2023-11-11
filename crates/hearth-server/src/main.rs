@@ -16,17 +16,15 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{net::SocketAddr, ops::DerefMut};
 
 use clap::Parser;
-use hearth_core::process::Process;
+use hearth_core::connection::Connection;
+use hearth_core::flue::{OwnedCapability, PostOffice};
 use hearth_core::runtime::Runtime;
-use hearth_core::{
-    process::{context::Capability, Connection, ProcessStore},
-    runtime::{RuntimeBuilder, RuntimeConfig},
-};
+use hearth_core::runtime::{RuntimeBuilder, RuntimeConfig};
 use hearth_network::auth::ServerAuthenticator;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
@@ -75,10 +73,10 @@ async fn main() {
     init.add_hook("hearth.init.Server".into(), network_root_tx);
 
     let mut builder = RuntimeBuilder::new(config_file);
-    builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    builder.add_plugin(hearth_cognito::WasmPlugin::default());
     builder.add_plugin(hearth_fs::FsPlugin::new(args.root));
     builder.add_plugin(init);
-    builder.add_plugin(hearth_daemon::DaemonPlugin::new());
+    builder.add_plugin(hearth_daemon::DaemonPlugin::default());
     let runtime = builder.run(config).await;
 
     if let Some(addr) = args.bind {
@@ -95,14 +93,13 @@ async fn main() {
 }
 
 async fn bind(
-    on_network_root: oneshot::Receiver<(Process, usize)>,
+    on_network_root: oneshot::Receiver<OwnedCapability>,
     addr: SocketAddr,
     runtime: Arc<Runtime>,
     authenticator: Arc<ServerAuthenticator>,
 ) {
     info!("Waiting for network root cap hook");
     let network_root = on_network_root.await.unwrap();
-    let network_root = Arc::new(network_root);
 
     info!("Binding to {:?}", addr);
     let listener = match TcpListener::bind(addr).await {
@@ -124,25 +121,21 @@ async fn bind(
         };
 
         info!("Connection from {:?}", addr);
-        let store = runtime.process_store.clone();
-        let network_root = network_root.clone();
+        let post = runtime.post.clone();
         let authenticator = authenticator.clone();
+        let network_root = network_root.clone();
         tokio::task::spawn(async move {
-            on_accept(store, authenticator, socket, addr, move |conn| {
-                let (ctx, handle) = network_root.as_ref();
-                ctx.export_connection_root(*handle, conn).unwrap();
-            })
-            .await;
+            on_accept(post, authenticator, socket, addr, network_root).await;
         });
     }
 }
 
 async fn on_accept(
-    store: Arc<ProcessStore>,
+    post: Arc<PostOffice>,
     authenticator: Arc<ServerAuthenticator>,
     mut client: TcpStream,
     addr: SocketAddr,
-    export_root: impl FnOnce(&mut Connection),
+    network_root: OwnedCapability,
 ) {
     info!("Authenticating with client {:?}", addr);
     let session_key = match authenticator.login(&mut client).await {
@@ -164,28 +157,15 @@ async fn on_accept(
     let conn = hearth_network::connection::Connection::new(client_rx, client_tx);
 
     let (root_cap_tx, client_root) = tokio::sync::oneshot::channel();
-    let on_root_cap = {
-        let store = store.clone();
-        move |root: Capability| {
-            if let Err(dropped) = root_cap_tx.send(root) {
-                dropped.free(store.as_ref());
-            }
-        }
-    };
 
     info!("Beginning connection");
-    let conn = Connection::new(
-        store.clone(),
-        conn.op_rx,
-        conn.op_tx,
-        Some(Box::new(on_root_cap)),
-    );
+    let conn = Connection::begin(post, conn.op_rx, conn.op_tx, Some(root_cap_tx));
 
     info!("Sending the client our root cap");
-    export_root(conn.lock().deref_mut());
+    conn.export_root(network_root);
 
     info!("Waiting for client's root cap...");
-    let client_root = match client_root.await {
+    let _client_root = match client_root.await {
         Ok(cap) => cap,
         Err(err) => {
             eprintln!("Client's root cap was never received: {:?}", err);
@@ -193,5 +173,5 @@ async fn on_accept(
         }
     };
 
-    client_root.free(store.as_ref());
+    info!("Client sent a root cap!");
 }

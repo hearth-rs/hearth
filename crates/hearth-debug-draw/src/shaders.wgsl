@@ -16,28 +16,31 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use tokio::sync::mpsc::UnboundedSender;
+struct VertexIn {
+    [[location(0)]] position: vec3<f32>;
+    [[location(1)]] color: vec4<f32>;
+};
 
-use super::store::{ProcessEntry, Signal};
+struct VertexOut {
+    [[builtin(position)]] clip_position: vec4<f32>;
+    [[location(0)]] color: vec4<f32>;
+};
 
-/// A local process entry in a process store.
-///
-/// This simply forwards signals through an async channel, to be used by other
-/// asynchronous tasks.
-pub struct LocalProcess {
-    /// The mailbox channel sender. Sends all incoming signals to this
-    /// process.
-    pub mailbox_tx: UnboundedSender<Signal>,
+struct CameraUniform {
+    mvp: mat4x4<f32>;
+};
+
+[[group(0), binding(0)]] var<uniform> camera: CameraUniform;
+
+[[stage(vertex)]]
+fn vs_main(in: VertexIn) -> VertexOut {
+    var out: VertexOut;
+    out.clip_position = camera.mvp * vec4<f32>(in.position, 1.0);
+    out.color = in.color;
+    return out;
 }
 
-impl ProcessEntry for LocalProcess {
-    type Data = ();
-
-    fn on_insert(&self, _data: &Self::Data, _handle: usize) {}
-
-    fn on_signal(&self, _data: &Self::Data, signal: Signal) -> Option<Signal> {
-        self.mailbox_tx.send(signal).err().map(|err| err.0)
-    }
-
-    fn on_remove(&self, _data: &Self::Data) {}
+[[stage(fragment)]]
+fn fs_main(frag: VertexOut) -> [[location(0)]] vec4<f32> {
+    return frag.color;
 }

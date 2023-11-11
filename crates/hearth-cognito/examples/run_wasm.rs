@@ -1,8 +1,10 @@
 use hearth_core::{
-    process::factory::ProcessInfo,
+    cargo_process_metadata,
+    flue::{Permissions, TableSignal},
+    process::ProcessMetadata,
     runtime::{RuntimeBuilder, RuntimeConfig},
 };
-use hearth_types::{wasm::WasmSpawnInfo, Flags};
+use hearth_types::{registry::RegistryRequest, wasm::WasmSpawnInfo};
 use tracing::info;
 
 #[tokio::main]
@@ -19,7 +21,7 @@ async fn main() {
     let config_path = hearth_core::get_config_path();
     let config_file = hearth_core::load_config(&config_path).unwrap();
     let mut builder = RuntimeBuilder::new(config_file);
-    builder.add_plugin(hearth_cognito::WasmPlugin::new());
+    builder.add_plugin(hearth_cognito::WasmPlugin::default());
     let runtime = builder.run(config).await;
 
     let wasm_lump = runtime.lump_store.add_lump(wasm_data.into()).await;
@@ -28,20 +30,46 @@ async fn main() {
         entrypoint: None,
     };
 
-    let mut parent = runtime.process_factory.spawn(ProcessInfo {}, Flags::SEND);
+    let meta = cargo_process_metadata!();
+    let parent = runtime.process_factory.spawn(meta);
+    let response = parent.borrow_group().create_mailbox().unwrap();
+    let response_cap = response
+        .export(Permissions::SEND, parent.borrow_table())
+        .unwrap();
 
-    let wasm_spawner = parent
-        .get_service("hearth.cognito.WasmProcessSpawner")
-        .expect("Wasm spawner service not found");
+    // import a cap to the registry's mailbox into the parent process
+    let table = parent.borrow_table();
+    let registry_mb = runtime.registry.borrow_parent();
+    let registry = registry_mb.export(Permissions::SEND, table).unwrap();
 
-    parent
+    let request = RegistryRequest::Get {
+        name: "hearth.cognito.WasmProcessSpawner".to_string(),
+    };
+
+    registry
+        .send(&serde_json::to_vec(&request).unwrap(), &[&response_cap])
+        .await
+        .unwrap();
+
+    let spawner = response
+        .recv(|signal| {
+            let TableSignal::Message { mut caps, .. } = signal else {
+                panic!("expected message, got {:?}", signal);
+            };
+
+            caps.remove(0)
+        })
+        .await
+        .unwrap();
+
+    let spawner = parent.borrow_table().wrap_handle(spawner).unwrap();
+
+    spawner
         .send(
-            wasm_spawner,
-            hearth_core::process::context::ContextMessage {
-                data: serde_json::to_vec(&spawn_info).unwrap(),
-                caps: vec![0],
-            },
+            &serde_json::to_vec(&spawn_info).unwrap(),
+            &[&response_cap, &registry],
         )
+        .await
         .unwrap();
 
     hearth_core::wait_for_interrupt().await;

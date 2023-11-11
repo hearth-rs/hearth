@@ -18,7 +18,9 @@
 
 use std::path::PathBuf;
 
-use hearth_core::{async_trait, hearth_types::fs::*, utils::*};
+use hearth_core::{
+    async_trait, cargo_process_metadata, hearth_types::fs::*, process::ProcessMetadata, utils::*,
+};
 
 pub struct FsPlugin {
     root: PathBuf,
@@ -29,10 +31,10 @@ impl RequestResponseProcess for FsPlugin {
     type Request = Request;
     type Response = Response;
 
-    async fn on_request(
-        &mut self,
-        request: &mut RequestInfo<'_, Request>,
-    ) -> ResponseInfo<Response> {
+    async fn on_request<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, Request>,
+    ) -> ResponseInfo<'a, Response> {
         let target = match PathBuf::try_from(&request.data.target) {
             Ok(target) => target,
             Err(_) => return Error::InvalidTarget.into(),
@@ -87,6 +89,13 @@ impl RequestResponseProcess for FsPlugin {
 
 impl ServiceRunner for FsPlugin {
     const NAME: &'static str = "hearth.fs.Filesystem";
+
+    fn get_process_metadata() -> ProcessMetadata {
+        let mut meta = cargo_process_metadata!();
+        meta.description =
+            Some("The native filesystem access service. Accepts FsRequest.".to_string());
+        meta
+    }
 }
 
 impl FsPlugin {

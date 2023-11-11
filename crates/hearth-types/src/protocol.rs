@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub use crate::Flags;
+pub use crate::Permissions;
 
 /// A reason for the revocation or unlinking of a process.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -44,7 +44,7 @@ pub enum CapOperation {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum LocalCapOperation {
     /// Declares a capability and its identifier.
-    DeclareCap { id: u32, flags: Flags },
+    DeclareCap { id: u32, perms: Permissions },
 
     /// Revokes a capability.
     ///
@@ -81,7 +81,7 @@ pub enum RemoteCapOperation {
 
     /// Sends a message to a remote capability.
     ///
-    /// Ignored if the capability does not have [Flags::SEND] set.
+    /// Ignored if the capability does not have [Permissions::SEND] set.
     Send {
         /// The remote capability to send a message to.
         ///
@@ -97,7 +97,7 @@ pub enum RemoteCapOperation {
 
     /// Kills a remote capability.
     ///
-    /// Ignored if the capability does not have [Flags::KILL] set.
+    /// Ignored if the capability does not have [Permissions::KILL] set.
     Kill {
         /// The remote capability to kill.
         ///

@@ -21,6 +21,9 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
+/// Debug draw protocol
+pub mod debug_draw;
+
 /// Filesystem native service protocol.
 pub mod fs;
 
@@ -58,14 +61,11 @@ impl Display for LumpId {
 }
 
 bitflags::bitflags! {
-    /// The permission flags of a capability.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
-    pub struct Flags: u32 {
+    pub struct Permissions: u32 {
         const SEND = 1 << 0;
-        const KILL = 1 << 1;
-        const LINK = 1 << 2;
-        const REGISTER = 1 << 3;
-        const TRUSTED = 1 << 4;
+        const MONITOR = 1 << 1;
+        const KILL = 1 << 2;
     }
 }
 
@@ -112,7 +112,7 @@ impl From<ProcessLogLevel> for u32 {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SignalKind {
     Message,
-    Unlink,
+    Down,
 }
 
 impl TryFrom<u32> for SignalKind {
@@ -122,7 +122,7 @@ impl TryFrom<u32> for SignalKind {
         use SignalKind::*;
         match other {
             0 => Ok(Message),
-            1 => Ok(Unlink),
+            1 => Ok(Down),
             _ => Err(()),
         }
     }
@@ -133,7 +133,7 @@ impl From<SignalKind> for u32 {
         use SignalKind::*;
         match val {
             Message => 0,
-            Unlink => 1,
+            Down => 1,
         }
     }
 }
@@ -148,4 +148,30 @@ macro_rules! impl_serialize_json_display {
             }
         }
     };
+}
+
+/// An ARGB color value with 8 bits per channel.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Color(pub u32);
+
+impl Color {
+    /// Create a color from individual RGB components and an opaque alpha.
+    pub fn from_rgb(r: u8, g: u8, b: u8) -> Self {
+        Self::from_argb(0xff, r, g, b)
+    }
+
+    /// Create a color from individual ARGB components.
+    pub fn from_argb(a: u8, r: u8, g: u8, b: u8) -> Self {
+        Self(((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32))
+    }
+
+    /// Extracts each color channel.
+    pub fn to_argb(&self) -> (u8, u8, u8, u8) {
+        (
+            (self.0 >> 24) as u8,
+            (self.0 >> 16) as u8,
+            (self.0 >> 8) as u8,
+            self.0 as u8,
+        )
+    }
 }

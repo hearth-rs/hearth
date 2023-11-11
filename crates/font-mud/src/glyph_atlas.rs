@@ -84,7 +84,7 @@ impl GlyphAtlas {
 
         let glyphs: Vec<_> = packed
             .into_iter()
-            .zip(glyphs.into_iter())
+            .zip(glyphs)
             .map(|glyph| {
                 if let (Some(position), Some(glyph)) = glyph {
                     let scale = (1.0 / glyph.px_per_em) as f32;

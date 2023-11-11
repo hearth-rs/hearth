@@ -10,8 +10,10 @@ async-trait = "0.1"
 blake3 = "1.3"
 bytes = "1.3"
 directories = "4"
-# hearth-ipc = { workspace = true }
+flue = "0.1.5"
+flume = { workspace = true }
 hearth-types = { workspace = true }
+ouroboros = { workspace = true }
 parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

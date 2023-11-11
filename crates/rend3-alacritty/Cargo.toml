@@ -6,7 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 alacritty_terminal = "0.16"
-bytemuck = { version = "1.13", features = ["derive"] }
+bytemuck = { workspace = true }
 font-mud = { path = "../font-mud" }
 glam = "0.20"
 mio-extras = "2"

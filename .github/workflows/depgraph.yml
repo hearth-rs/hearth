@@ -1,0 +1,36 @@
+name: Update Depgraph
+
+on:
+  workflow_dispatch:
+  push:
+    paths: [ "**/Cargo.toml" ]
+    branches: [ "main" ]
+  pull_request:
+    paths: [ "**/Cargo.toml" ]
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+
+jobs:
+  depgraph:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2.2.0
+    - name: Install graphviz
+      run: sudo apt install graphviz
+    - name: Install cargo-depgraph
+      uses: actions-rs/cargo@v1
+      with:
+          command: install
+          args: cargo-depgraph
+    - name: Generate depgraph
+      run: cargo depgraph --workspace-only --hide hearth-core,hearth-types > depgraph.dot
+    - name: Visualize depgraph
+      run: dot -Tpng depgraph.dot > resources/misc/depgraph.png
+    - name: Commit depgraph
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+          commit_message: 'readme: update depgraph'
+          file_pattern: 'resources/misc/depgraph.png'

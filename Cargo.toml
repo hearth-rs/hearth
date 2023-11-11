@@ -1,30 +1,15 @@
 [workspace]
 resolver = "2"
-members = [
-  "crates/font-mud",
-  "crates/hearth-client",
-  "crates/hearth-ctl",
-  "crates/hearth-cognito",
-  "crates/hearth-core",
-  "crates/hearth-daemon",
-  "crates/hearth-init",
-  "crates/hearth-ipc",
-  "crates/hearth-fs",
-  "crates/hearth-macros",
-  "crates/hearth-network",
-  "crates/hearth-rend3",
-  "crates/hearth-server",
-  "crates/hearth-terminal",
-  "crates/hearth-types",
-  "crates/hearth-wasm",
-  "crates/rend3-alacritty",
-]
+members = [ "crates/*" ]
 
 [workspace.dependencies]
-bytemuck = "1.13"
+bytemuck = { version = "1.13", features = ["derive"] }
+flume = "0.11"
+glam = { version = "0.20", features = ["serde"] }
 hearth-cognito = { path = "crates/hearth-cognito" }
 hearth-core = { path = "crates/hearth-core" }
 hearth-daemon = { path = "crates/hearth-daemon" }
+hearth-debug-draw = { path = "crates/hearth-debug-draw" }
 hearth-init = { path = "crates/hearth-init" }
 hearth-ipc = { path = "crates/hearth-ipc" }
 hearth-fs = { path = "crates/hearth-fs" }
@@ -34,6 +19,7 @@ hearth-rend3 = { path = "crates/hearth-rend3" }
 hearth-terminal = { path = "crates/hearth-terminal" }
 hearth-types = { path = "crates/hearth-types" }
 hearth-wasm = { path = "crates/hearth-wasm" }
+ouroboros = "0.18.0"
 parking_lot = "0.12"
 rend3-alacritty = { path = "crates/rend3-alacritty" }
 serde_json = "1"

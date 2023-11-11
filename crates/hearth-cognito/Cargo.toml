@@ -6,9 +6,11 @@ license = "AGPL-3.0-or-later"
 
 [dependencies]
 bytemuck = { workspace = true }
+futures-util = "0.3"
 hearth-core = { workspace = true }
 hearth-macros = { workspace = true }
 hearth-wasm = { workspace = true }
+ouroboros = { workspace = true }
 serde_json = { workspace = true }
 slab = "0.4.8"
 tracing = { workspace = true }

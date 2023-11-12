@@ -2,7 +2,8 @@ name: Pull Request Checks
 
 on:
   workflow_run:
-    workflows: ["Run Update Depgraph"]
+    workflows: ["Update Depgraph"]
+    branches: [main]
     types:
       - completed
   push:

@@ -121,7 +121,7 @@ directory:
 
 - the client's binary is located at `target/release/client`
 - the server's binary is located at `target/release/hearth-server`
-- the CLI's binary is located at `target/release/hearth-ctl`
+- the CLI's binary is located at `target/release/ctl`
 
 More information on how to run each binary once compiled can be displayed using
 the `--help` flag on any binary.
@@ -149,7 +149,7 @@ to be aware of:
     implementing the client and server, respectively. Each depends on a variety
     of plugin crates, since they build and run the runtimes that use those
     plugins.
-- **hearth-ctl**: a command-line IPC client to perform common operations on
+- **ctl**: a command-line IPC client to perform common operations on
     a Hearth runtime. Only depends on `hearth-schema` to define the IPC protocol
     and `hearth-ipc` to implement OS-specific IPC transport mechanisms.
 

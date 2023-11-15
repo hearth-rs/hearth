@@ -263,7 +263,7 @@ the CLI to create more complex workflows. This allows Hearth users to
 repeatedly perform complex actions without needing to compile and spawn a
 new Hearth process or to compile and run a new native process.
 
-The CLI program is named `hearth-ctl` and has multiple subcommands that each
+The CLI program is named `ctl` and has multiple subcommands that each
 perform a different operation on the runtime. Hearth may add more subcommands
 as needed, but at the current time of writing it is known that they include:
 
@@ -274,7 +274,7 @@ as needed, but at the current time of writing it is known that they include:
 - `tail`: tail a process's log
 - `send`: send a process a message
 
-`hearth-ctl` follows POSIX-like conventions for user interaction. It returns
+`ctl` follows POSIX-like conventions for user interaction. It returns
 reasonable exit codes according to the POSIX standard, and displays output to
 `stdout` in lightly- or un-formatted strings that can be easily processed by a
 shell script.
@@ -284,7 +284,7 @@ Exit codes are provided by the
 
 ## TUI
 
-A more advanced alternative to `hearth-ctl` is `hearth-console`, a terminal
+A more advanced alternative to `ctl` is `hearth-console`, a terminal
 user interface (TUI) utility program. `hearth-console` provides a long-running
 live view into the status of the connected Hearth daemon, and user-friendly
 controls (at least for users acclimated to GUIs) to administrate the Hearth
@@ -351,7 +351,7 @@ component separately.
 - [x] design initial RPC network interfaces
 - [ ] write mock RPC endpoints for testing subsystems in isolation
 - [x] implement IPC using Unix domain sockets (Unix only)
-- [ ] complete `hearth-ctl`
+- [ ] complete `ctl`
 - [ ] define guest-to-host WebAssembly APIs for logging, lump loading, and message transmission
 - [x] create a native service for spawning WebAssembly processes
 - [x] integrate rend3 and winit into `client`

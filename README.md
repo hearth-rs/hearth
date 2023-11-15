@@ -120,7 +120,7 @@ Once Cargo has finished, you can find Hearth's binaries in the `target/release`
 directory:
 
 - the client's binary is located at `target/release/client`
-- the server's binary is located at `target/release/hearth-server`
+- the server's binary is located at `target/release/server`
 - the CLI's binary is located at `target/release/ctl`
 
 More information on how to run each binary once compiled can be displayed using
@@ -129,7 +129,7 @@ the `--help` flag on any binary.
 Example:
 
 ```sh
-hearth-server --help # prints usage info for the Hearth server
+server --help # prints usage info for the Hearth server
 ```
 
 # Workspace Layout
@@ -145,7 +145,7 @@ to be aware of:
 - **hearth-schema**: a schema crate that defines the guest-to-host message
     protocols. Since the purpose of most Hearth crates is to provide some kind
     of native resource to guest processes, most crates depend on `hearth-schema`.
-- **client** and **hearth-server**: the main Hearth application binaries,
+- **client** and **server**: the main Hearth application binaries,
     implementing the client and server, respectively. Each depends on a variety
     of plugin crates, since they build and run the runtimes that use those
     plugins.

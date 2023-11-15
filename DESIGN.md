@@ -354,7 +354,7 @@ component separately.
 - [ ] complete `hearth-ctl`
 - [ ] define guest-to-host WebAssembly APIs for logging, lump loading, and message transmission
 - [x] create a native service for spawning WebAssembly processes
-- [x] integrate rend3 and winit into `hearth-client`
+- [x] integrate rend3 and winit into `client`
 - [ ] use WebSockets (optionally over TLS) for networking
 
 ## Phase 2: Alpha

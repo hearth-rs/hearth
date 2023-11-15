@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "crates/*", "kindling/build"]
+members = [ "crates/*", "main/*", "kindling/build"]
 
 [workspace.dependencies]
 bytemuck = { version = "1.13", features = ["derive"] }

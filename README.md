@@ -7,16 +7,20 @@
 Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
 
+<a href="https://discord.gg/gzzJ3pWCft">
+  <img src="./resources/misc/join-discord.png" width="300"/>
+</a>
+
+<a href="https://www.gnu.org/licenses/agpl-3.0.html">
+  <img src="./resources/misc/agplv3-with-text-162x68.png" width="200"/>
+</a>
+
 [Philosophy](#philosophy) •
 [Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
 [Contributing](/CONTRIBUTORS.md) •
 [Discord "server"](https://discord.gg/gzzJ3pWCft) •
 [Matrix room](https://matrix.to/#/#hearth:leyline.witchcraft.zone)
-
-<a href="https://www.gnu.org/licenses/agpl-3.0.html">
-  <img src="./resources/misc/agplv3-with-text-162x68.png"/>
-</a>
 
 Hearth's logo was created (c) 2023 by [Sasha Koshka](https://holanet.xyz) and
 is licensed under a

@@ -1,3 +1,59 @@
+# The History of Virtual Worlds
+
+Shared virtual worlds have been around for decades, in many forms. Before PCs
+were capable of 3D graphics, a popular kind of virtual space were [multi-user
+dungeons](https://en.wikipedia.org/wiki/Multi-user_dungeon), or MUDs. Users
+can connect to MUDs over the internet using a client such as [Telnet](https://en.wikipedia.org/wiki/Telnet),
+and join other users in a virtual world. Although most MUDs only have
+server-provided worlds that constrain users into their preset rules, some MUDs
+(such as [MUCKs](https://en.wikipedia.org/wiki/TinyMUCK) and [MOOs](https://en.wikipedia.org/wiki/MOO))
+allow users to extend the world with their own functionality. MOOs in particular
+are their own editors -- everything built in a MOO can be developed using the
+same text interface used to play in the MOO.
+
+> TODO: could we go into more detail about the desires that led to early virtual spaces?
+
+In the early 2000s, [Second Life](https://en.wikipedia.org/wiki/Second_Life)
+implemented the same concept of alowing user-created content but with modern
+technologies. Users could construct a 3D virtual environment where users
+could interact with each other using custom 3D avatars. [Roblox](https://en.wikipedia.org/wiki/Roblox)
+is another example of an early graphical virtual worlds platform. The 2010s
+brought even more technological innovation to virtual worlds, particularly in
+the form of virtual reality (VR) technology. Platforms such as [Neos](https://en.wikipedia.org/wiki/NeosVR),
+[VRChat](https://en.wikipedia.org/wiki/VRChat),
+and [Rec Room](https://en.wikipedia.org/wiki/Rec_Room_(video_game)) rocketed
+into popularity, all fueled by user-generated content. VR equipment allows
+ever-increasing realism and potential for social interaction, powered by the
+limitless creativity that comes from these platforms' steadily increasing
+userbases.
+
+However, something has been lost in translation to three dimensions. Anyone
+who has developed content for VRChat can attest that switching from the desktop
+Unity editor to a VR headset every time a world needs to be playtested is at
+best a hassle. Platforms such as Neos attempt to bring content creation tooling
+into the 3D environment without requiring that users take off their headsets.
+However, that tooling must be maintained and extended by Neos's developers
+outside of the Neos platform. This eliminates the option for users to extend
+Neos's tooling with their own customizations and ultimately puts a limit on what
+can and can't be created using Neos's platform.
+
+Modern-day virtual world platforms are also extremely limited by their
+centralization and status as proprietary software. Moderation is a difficult
+enough task to perform for non-3D internet content, but that difficulty is
+multiplied by the real-time and 3D nature of virtual worlds. However, platforms
+such as [Mastodon](https://en.wikipedia.org/wiki/Mastodon_(social_network))
+and the wider [Fediverse](https://en.wikipedia.org/wiki/Fediverse) prove that
+a volunteer-driven, open-source approach to platform development can attract a
+large userbase in the modern era. Proprietary virtual worlds software will not
+stay feasible forever.
+
+> TODO: *how* is the Fediverse an improvement? how is federation the future?
+
+There is clearly room for contemporary virtual world platforms to grow. So,
+where do we go from here?
+
+> TODO: are rhetorical questions out of style? direct statement about Hearth being where we go from here?
+
 # Overview
 
 Hearth is an always-on execution environment for building 3D virtual worlds

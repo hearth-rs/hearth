@@ -33,22 +33,6 @@ is licensed under a
   </figure>
 </div>
 
-# The History of Virtual Worlds
-
-Shared virtual spaces have been around for decades, in many forms. Before PCs
-were capable of 3D graphics, a popular kind of virtual space were multi-user
-dungeons, or MUDs. Users can connect to MUDs from a text-based client like
-telnet, and join other users in a textual virtual world. Although most MUDs
-only have server-provided worlds that constrained users into their preset
-rules, some MUDs (such as MUCKs and MOOs) allow users to extend the world with
-their own functionality. In the early 2000s, Second Life implemented the same
-principles but in a 3D space instead of a textual one. Users can create their
-own spatial virtual worlds or enter other users' worlds with a 3D avatar. In
-the modern day, platforms such as Roblox, VRChat, Rec Room, and Neos all
-perform the same basic task, but in virtual reality. The decades-old
-commonality between all of these diversity platforms is user-created content.
-What's next?
-
 # Philosophy
 
 Hearth is a proof-of-concept of a new design philosophy for constructing shared

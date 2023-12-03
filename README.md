@@ -41,7 +41,8 @@ dungeons, or MUDs. Users can connect to MUDs from a text-based client such as
 telnet, and join other users in a textual virtual world. Although most MUDs
 only have server-provided worlds that constrain users into their preset rules,
 some MUDs (such as MUCKs and MOOs) allow users to extend the world with their
-own functionality.
+own functionality. MOOs are their own editors, and everything built in a MOO
+can be developed using the same text interface used to play in the MOO.
 
 During the early 2000s, Second Life implemented the same principles of allowing
 users to create content but with modern technologies. Users could construct a
@@ -53,26 +54,25 @@ fueled by user-generated content. VR equipment allows ever-increasing realism
 and potential for social interaction, powered by the limitless creativity that
 comes from the millions of people now using these platforms.
 
-However, something was lost in translation during the migration to three
-dimensions.  One of the most powerful aspects of old-school, textual MOOs is
-that they are their own editors, and everything built in a MOO can be developed
-using the same text interface used to play in the MOO. On the other hand, anyone
-who has developed content for VRChat can attest that switching from the desktop
-Unity editor to a VR headset every time a world needs to be playtested is very
-inconvenient. Platforms such as Neos attempt to bring content creation tooling
-into the 3D environment without requiring that users take off their headsets.
-However, that tooling must be maintained and extended by Neos's developers
-outside of the Neos platform. This eliminates the option for users to extend
-Neos's tooling with their own customizations and ultimately puts a limit on
-what can and can't be created using Neos's platform.
+However, something was lost in translation during the migration from textual
+interfaces to three dimensions. Anyone who has developed content for VRChat can
+attest that switching from the desktop Unity editor to a VR headset every time
+a world needs to be playtested is very inconvenient. Platforms such as Neos
+attempt to bring a full set of content creation tooling into the 3D environment
+itself. However, that tooling must be maintained and extended by Neos's
+developers outside of the Neos platform. This eliminates the option for users to
+extend Neos's tooling with their own customizations and ultimately puts a limit
+on what can and can't be created using Neos's platform. The infinite flexibility
+in world creation that MOOs have is currently impossible using 3D virtual world
+software.
 
-Modern-day virtual world platforms are also extremely limited by their
-centralization and status as proprietary software. Moderation is a difficult
-enough task to perform for non-3D internet content, but that difficulty is
-magnified by the real-time and 3D nature of virtual worlds. However, platforms
-such as Mastodon and the wider Fediverse prove that a volunteer-driven, open-
-source approach to platform development can attract a large userbase in the
-modern era. Proprietary virtual worlds software will not stay feasible forever.
+Modern-day virtual world platforms are also limited by their centralization and
+status as proprietary software. Moderation is a difficult enough task to perform
+for non-3D internet content, but that difficulty is magnified by the real-time
+and 3D nature of virtual worlds. However, platforms such as Mastodon and the
+wider Fediverse prove that a volunteer-driven, open- source approach to platform
+development can attract a large userbase in the modern era. Proprietary virtual
+worlds software will not stay feasible forever.
 
 There is clearly lots of room for contemporary virtual world platforms to grow.
 So, where do we go from here?

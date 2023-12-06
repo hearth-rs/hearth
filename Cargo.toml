@@ -5,7 +5,7 @@ members = ["core/*", "kindling/build", "main/*", "plugins/*"]
 [workspace.dependencies]
 bytemuck = { version = "1.13", features = ["derive"] }
 flume = "0.11"
-glam = { version = "0.20", features = ["serde"] }
+glam = { version = "^0.24", features = ["serde"] }
 hearth-canvas.path = "plugins/canvas"
 hearth-daemon.path = "plugins/daemon"
 hearth-debug-draw.path = "plugins/debug-draw"
@@ -31,3 +31,15 @@ wasmtime = "11"
 version = "1.0.103, < 1.0.171"
 default-features = false
 features = ["derive"]
+
+[workspace.dependencies.rend3]
+git = "https://github.com/BVE-Reborn/rend3.git"
+rev = "0e01337"
+
+[workspace.dependencies.rend3-framework]
+git = "https://github.com/BVE-Reborn/rend3.git"
+rev = "0e01337"
+
+[workspace.dependencies.rend3-routine]
+git = "https://github.com/BVE-Reborn/rend3.git"
+rev = "0e01337"

@@ -138,7 +138,7 @@ impl Window {
         let swapchain_format = wgpu::TextureFormat::Bgra8UnormSrgb;
         let iad = rend3::create_iad(None, None, None, None).await.unwrap();
         let surface = unsafe { iad.instance.create_surface(&window) };
-        let surface = Arc::new(surface);
+        let surface = Arc::new(surface.unwrap());
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -146,6 +146,8 @@ impl Window {
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
+            alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+            view_formats: vec![swapchain_format],
         };
 
         surface.configure(&iad.device, &config);
@@ -161,6 +163,7 @@ impl Window {
             intensity: 10.0,
             direction: glam::Vec3::new(-1.0, -4.0, 2.0),
             distance: 400.0,
+            resolution: 256,
         });
 
         let window = Self {
@@ -199,6 +202,20 @@ impl Window {
     }
 
     pub fn on_draw(&mut self) {
+        // acquire surface texture
+        let output_texture = match self.surface.get_current_texture() {
+            Ok(o) => o,
+            Err(wgpu::SurfaceError::Outdated) => {
+                let size = self.window.inner_size();
+                self.on_resize(size);
+                return;
+            }
+            Err(err) => {
+                tracing::error!("Surface error: {err:?}");
+                return;
+            }
+        };
+
         // notify redraw event
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_redraw);
@@ -206,16 +223,11 @@ impl Window {
         self.notify_event(WindowEvent::Redraw { dt });
         self.last_redraw = now;
 
-        let output_frame = rend3::util::output::OutputFrame::Surface {
-            surface: self.surface.to_owned(),
-        };
-
         let resolution = glam::UVec2::new(self.config.width, self.config.height);
-
         let (on_complete, on_complete_rx) = oneshot::channel();
 
         let request = FrameRequest {
-            output_frame,
+            output_texture,
             camera: self.camera,
             resolution,
             on_complete,

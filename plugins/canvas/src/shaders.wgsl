@@ -17,21 +17,21 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 struct VertexOut {
-    [[builtin(position)]] clip_position: vec4<f32>;
-    [[location(0)]] uv: vec2<f32>;
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
 };
 
 struct CanvasUniform {
-    mvp: mat4x4<f32>;
-    texture_size: vec4<f32>;
+    mvp: mat4x4<f32>,
+    texture_size: vec4<f32>,
 };
 
-[[group(0), binding(0)]] var<uniform> canvas: CanvasUniform;
-[[group(0), binding(1)]] var canvas_t: texture_2d<f32>;
-[[group(0), binding(2)]] var canvas_s: sampler;
+@group(0) @binding(0) var<uniform> canvas: CanvasUniform;
+@group(0) @binding(1) var canvas_t: texture_2d<f32>;
+@group(0) @binding(2) var canvas_s: sampler;
 
-[[stage(vertex)]]
-fn vs_main([[builtin(vertex_index)]] in_vertex_index: u32) -> VertexOut {
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOut {
     let x = f32(i32(in_vertex_index & 1u));
     let y = f32(i32(in_vertex_index & 2u) / 2);
     let xy = vec2<f32>(x, y);
@@ -51,8 +51,8 @@ fn smoothstep(low: vec2<f32>, high: vec2<f32>, x: vec2<f32>) -> vec2<f32> {
     return t * t * (3.0 - 2.0 * t);
 }
 
-[[stage(fragment)]]
-fn fs_main(frag: VertexOut) -> [[location(0)]] vec4<f32> {
+@fragment
+fn fs_main(frag: VertexOut) -> @location(0) vec4<f32> {
     // use linear filtering if enabled
     if (canvas.texture_size.x < 0.0) {
         return textureSample(canvas_t, canvas_s, frag.uv);

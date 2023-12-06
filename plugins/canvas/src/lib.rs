@@ -22,7 +22,7 @@ use bytemuck::{Pod, Zeroable};
 use flume::{Receiver, Sender};
 use hearth_rend3::{
     rend3::{
-        graph::{DepthHandle, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets},
+        graph::{NodeResourceUsage, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets},
         types::glam::{vec2, Mat4, Vec4},
     },
     wgpu::{util::DeviceExt, *},
@@ -210,8 +210,8 @@ impl CanvasDraw {
             &blit.pixels.data,
             ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some((blit.pixels.width * 4).try_into().unwrap()),
-                rows_per_image: Some((blit.pixels.height).try_into().unwrap()),
+                bytes_per_row: Some(blit.pixels.width * 4),
+                rows_per_image: Some(blit.pixels.height),
             },
             Extent3d {
                 width,
@@ -228,6 +228,8 @@ impl CanvasDraw {
             .data
             .resize((pixels.width * pixels.height) as usize * 4, 0xff);
 
+        let format = TextureFormat::Rgba8UnormSrgb;
+
         device.create_texture_with_data(
             queue,
             &TextureDescriptor {
@@ -240,7 +242,8 @@ impl CanvasDraw {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
-                format: TextureFormat::Rgba8UnormSrgb,
+                format,
+                view_formats: &[format],
                 usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
             },
             &pixels.data,
@@ -294,7 +297,7 @@ impl CanvasRoutine {
     fn new(rend3: &mut Rend3Plugin, ops_rx: Receiver<CanvasOperation>) -> Self {
         let device = rend3.iad.device.as_ref();
 
-        let shader = device.create_shader_module(&include_wgsl!("shaders.wgsl"));
+        let shader = device.create_shader_module(include_wgsl!("shaders.wgsl"));
 
         let bgl = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("canvas bind group layout"),
@@ -357,11 +360,11 @@ impl CanvasRoutine {
             fragment: Some(FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
-                targets: &[ColorTargetState {
+                targets: &[Some(ColorTargetState {
                     format: rend3.surface_format,
                     blend: None,
                     write_mask: ColorWrites::COLOR,
-                }],
+                })],
             }),
             multiview: None,
         });
@@ -440,12 +443,13 @@ pub struct CanvasNode<'a> {
 
 impl<'a> Node<'a> for CanvasNode<'a> {
     fn draw<'graph>(&'graph self, info: &mut RoutineInfo<'_, 'graph>) {
-        let output = info.graph.add_surface_texture();
-        let depth = info.state.depth;
-
         let mut builder = info.graph.add_node("canvas");
-        let output_handle = builder.add_render_target_output(output);
-        let depth_handle = builder.add_render_target_output(depth);
+        let output_handle =
+            builder.add_render_target(info.output_handle, NodeResourceUsage::Output);
+        let depth_handle = builder.add_render_target(
+            info.state.depth.rendering_target(),
+            NodeResourceUsage::InputOutput,
+        );
 
         let rpass_handle = builder.add_renderpass(RenderPassTargets {
             targets: vec![RenderPassTarget {
@@ -454,29 +458,24 @@ impl<'a> Node<'a> for CanvasNode<'a> {
                 resolve: None,
             }],
             depth_stencil: Some(RenderPassDepthTarget {
-                target: DepthHandle::RenderTarget(depth_handle),
+                target: depth_handle,
                 depth_clear: Some(0.0),
                 stencil_clear: None,
             }),
         });
 
-        let routine = builder.passthrough_ref(self.routine);
+        builder.build(move |mut ctx| {
+            let rpass = ctx.encoder_or_pass.take_rpass(rpass_handle);
+            let vp = ctx.data_core.camera_manager.view_proj();
 
-        builder.build(
-            move |pt, _renderer, encoder_or_pass, _temps, _ready, graph_data| {
-                let routine = pt.get(routine);
-                let rpass = encoder_or_pass.get_rpass(rpass_handle);
-                let vp = graph_data.camera_manager.view_proj();
+            rpass.set_pipeline(&self.routine.pipeline);
 
-                rpass.set_pipeline(&routine.pipeline);
-
-                for draw in routine.draws.values() {
-                    draw.update_ubo(&routine.queue, vp);
-                    rpass.set_bind_group(0, &draw.bind_group, &[]);
-                    rpass.draw(0..4, 0..1);
-                }
-            },
-        );
+            for draw in self.routine.draws.values() {
+                draw.update_ubo(&self.routine.queue, vp);
+                rpass.set_bind_group(0, &draw.bind_group, &[]);
+                rpass.draw(0..4, 0..1);
+            }
+        });
     }
 }
 

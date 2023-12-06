@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 bytemuck = { workspace = true }
-glam = "0.20"
+glam = { workspace = true }
 hearth-runtime = { workspace = true }
-rend3 = "0.3"
-rend3-routine = "0.3"
+rend3 = { workspace = true }
+rend3-routine = { workspace = true }
 tokio = { version = "1.24", features = ["sync"] }
-wgpu = "^0.12"
+wgpu = "^0.18"

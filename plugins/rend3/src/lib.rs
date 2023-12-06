@@ -20,15 +20,14 @@ use std::sync::Arc;
 
 use glam::{UVec2, Vec4};
 use hearth_runtime::runtime::{Plugin, RuntimeBuilder};
-use rend3::graph::{ReadyData, RenderGraph};
+use rend3::graph::{InstructionEvaluationOutput, RenderGraph, RenderTargetHandle};
 use rend3::types::{Camera, SampleCount};
-use rend3::util::output::OutputFrame;
-use rend3::{InstanceAdapterDevice, Renderer};
+use rend3::{InstanceAdapterDevice, Renderer, ShaderPreProcessor};
 use rend3_routine::base::{BaseRenderGraph, BaseRenderGraphIntermediateState};
 use rend3_routine::pbr::PbrRoutine;
 use rend3_routine::tonemapping::TonemappingRoutine;
 use tokio::sync::{mpsc, oneshot};
-use wgpu::TextureFormat;
+use wgpu::{SurfaceTexture, TextureFormat};
 
 pub use rend3;
 pub use rend3_routine;
@@ -41,7 +40,8 @@ pub struct RoutineInfo<'a, 'graph> {
     pub state: &'a BaseRenderGraphIntermediateState,
     pub sample_count: SampleCount,
     pub resolution: UVec2,
-    pub ready_data: &'a ReadyData,
+    pub output_handle: RenderTargetHandle,
+    pub eval_output: &'a InstructionEvaluationOutput,
     pub graph: &'a mut RenderGraph<'graph>,
 }
 
@@ -55,8 +55,8 @@ pub trait Node<'a> {
 
 /// A request to the renderer to draw a single frame.
 pub struct FrameRequest {
-    /// The rend3-ready output frame.
-    pub output_frame: OutputFrame,
+    /// The output texture.
+    pub output_texture: SurfaceTexture,
 
     /// The dimensions of the frame.
     pub resolution: glam::UVec2,
@@ -76,6 +76,7 @@ pub struct Rend3Plugin {
     pub iad: InstanceAdapterDevice,
     pub surface_format: TextureFormat,
     pub renderer: Arc<Renderer>,
+    pub spp: ShaderPreProcessor,
     pub base_render_graph: BaseRenderGraph,
     pub pbr_routine: PbrRoutine,
     pub tonemapping_routine: TonemappingRoutine,
@@ -100,11 +101,16 @@ impl Rend3Plugin {
     pub fn new(iad: InstanceAdapterDevice, surface_format: TextureFormat) -> Self {
         let handedness = rend3::types::Handedness::Right;
         let renderer = Renderer::new(iad.to_owned(), handedness, None).unwrap();
-        let base_render_graph = BaseRenderGraph::new(&renderer);
+        let mut spp = ShaderPreProcessor::new();
+        rend3_routine::builtin_shaders(&mut spp);
+        let base_render_graph = BaseRenderGraph::new(&renderer, &spp);
         let mut data_core = renderer.data_core.lock();
         let interfaces = &base_render_graph.interfaces;
-        let pbr_routine = PbrRoutine::new(&renderer, &mut data_core, interfaces);
-        let tonemapping_routine = TonemappingRoutine::new(&renderer, interfaces, surface_format);
+        let culling_buffer = &base_render_graph.gpu_culler.culling_buffer_map_handle;
+        let pbr_routine =
+            PbrRoutine::new(&renderer, &mut data_core, &spp, interfaces, culling_buffer);
+        let tonemapping_routine =
+            TonemappingRoutine::new(&renderer, &spp, interfaces, surface_format);
         drop(data_core);
 
         let (frame_request_tx, frame_request_rx) = mpsc::unbounded_channel();
@@ -113,6 +119,7 @@ impl Rend3Plugin {
             iad,
             surface_format,
             renderer,
+            spp,
             base_render_graph,
             pbr_routine,
             tonemapping_routine,
@@ -129,7 +136,8 @@ impl Rend3Plugin {
 
     /// Draws a frame in response to a [FrameRequest].
     pub fn draw(&mut self, request: FrameRequest) {
-        let (cmd_bufs, ready) = self.renderer.ready();
+        self.renderer.swap_instruction_buffers();
+        let mut eval_output = self.renderer.evaluate_instructions();
 
         let aspect = request.resolution.as_vec2();
         let aspect = aspect.x / aspect.y;
@@ -146,49 +154,90 @@ impl Rend3Plugin {
         let graph = &mut graph_data;
         let samples = SampleCount::One;
         let base = &self.base_render_graph;
+        let resolution = request.resolution;
         let ambient = Vec4::ZERO;
         let pbr = &self.pbr_routine;
         let skybox = None;
+        let clear_color = Vec4::ZERO;
+        let tonemapping = &self.tonemapping_routine;
+
+        // add output frame
+        let output_handle = graph.add_imported_render_target(
+            &request.output_texture.texture,
+            0..1,
+            0..1,
+            rend3::graph::ViewportRect {
+                offset: UVec2::ZERO,
+                size: resolution,
+            },
+        );
 
         // see implementation of BaseRenderGraph::add_to_graph() for details
         // on what the following code is based on
         //
         // we need to override this function so that we can hook into the
         // graph's state in our custom nodes
-        let state =
-            BaseRenderGraphIntermediateState::new(graph, &ready, request.resolution, samples);
 
-        // Preparing and uploading data
-        state.pre_skinning(graph);
-        state.pbr_pre_culling(graph);
-        state.create_frame_uniforms(graph, base, ambient);
+        // Create the data and handles for the graph.
+        let state = BaseRenderGraphIntermediateState::new(graph, &eval_output, resolution, samples);
 
-        // Skinning
+        // Clear the shadow map.
+        state.clear_shadow(graph);
+
+        // Prepare all the uniforms that all shaders need access to.
+        state.create_frame_uniforms(graph, base, ambient, resolution);
+
+        // Perform compute based skinning.
         state.skinning(graph, base);
 
-        // Culling
-        state.pbr_shadow_culling(graph, base, pbr);
-        state.pbr_culling(graph, base, pbr);
+        // Upload the uniforms for the objects in the shadow pass.
+        state.shadow_object_uniform_upload(graph, base, &eval_output);
+        // Perform culling for the objects in the shadow pass.
+        state.pbr_shadow_culling(graph, base);
 
-        // Depth-only rendering
-        state.pbr_shadow_rendering(graph, pbr);
-        state.pbr_prepass_rendering(graph, pbr, samples);
+        // Render all the shadows to the shadow map.
+        state.pbr_shadow_rendering(graph, pbr, &eval_output.shadows);
 
-        // Skybox
+        // Clear the primary render target and depth target.
+        state.clear(graph, clear_color);
+
+        // Upload the uniforms for the objects in the forward pass.
+        state.object_uniform_upload(graph, base, resolution, samples);
+
+        // Do the first pass, rendering the predicted triangles from last frame.
+        state.pbr_render_opaque_predicted_triangles(graph, pbr, samples);
+
+        // Create the hi-z buffer.
+        state.hi_z(graph, pbr, resolution);
+
+        // Perform culling for the objects in the forward pass.
+        //
+        // The result of culling will be used to predict the visible triangles for
+        // the next frame. It will also render all the triangles that were visible
+        // but were not predicted last frame.
+        state.pbr_culling(graph, base);
+
+        // Do the second pass, rendering the residual triangles.
+        state.pbr_render_opaque_residual_triangles(graph, pbr, samples);
+
+        // Render the skybox.
         state.skybox(graph, skybox, samples);
 
-        // Forward rendering
-        state.pbr_forward_rendering(graph, pbr, samples);
+        // Render all transparent objects.
+        //
+        // This _must_ happen after culling, as all transparent objects are
+        // considered "residual".
+        state.pbr_forward_rendering_transparent(graph, pbr, samples);
 
-        // Make the reference to the surface
-        let surface = graph.add_surface_texture();
-        state.tonemapping(graph, &self.tonemapping_routine, surface);
+        // Tonemap the HDR inner buffer to the output buffer.
+        state.tonemapping(graph, tonemapping, output_handle);
 
         let mut info = RoutineInfo {
             state: &state,
             sample_count: SampleCount::One,
             resolution: request.resolution,
-            ready_data: &ready,
+            output_handle,
+            eval_output: &eval_output,
             graph,
         };
 
@@ -196,7 +245,9 @@ impl Rend3Plugin {
             node.draw(&mut info);
         }
 
-        graph_data.execute(&self.renderer, request.output_frame, cmd_bufs, &ready);
+        graph_data.execute(&self.renderer, &mut eval_output);
+
+        request.output_texture.present();
 
         let _ = request.on_complete.send(()); // ignore hangup
     }

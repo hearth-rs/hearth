@@ -105,10 +105,12 @@ pub struct TerminalNode<'a> {
 
 impl<'a> Node<'a> for TerminalNode<'a> {
     fn draw<'graph>(&'graph self, info: &mut RoutineInfo<'_, 'graph>) {
-        let output = info.graph.add_surface_texture();
-        let depth = info.state.depth;
-        self.pipelines
-            .add_to_graph(self.draws.as_slice(), info.graph, output, depth);
+        self.pipelines.add_to_graph(
+            self.draws.as_slice(),
+            info.graph,
+            info.output_handle,
+            info.state.depth.rendering_target(),
+        );
     }
 }
 

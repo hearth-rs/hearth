@@ -22,7 +22,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::Mat4;
 use hearth_rend3::{
     rend3::graph::{
-        DepthHandle, RenderGraph, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets,
+        NodeResourceUsage, RenderGraph, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets,
         RenderTargetHandle,
     },
     utils::DynamicMesh,
@@ -110,7 +110,7 @@ impl TerminalPipelines {
     /// Initialize a device and queue's GPU state targeting the given output
     /// surface format.
     pub fn new(device: Arc<Device>, queue: Arc<Queue>, format: TextureFormat) -> Self {
-        let shader = device.create_shader_module(&include_wgsl!("shaders.wgsl"));
+        let shader = device.create_shader_module(include_wgsl!("shaders.wgsl"));
 
         let camera_bgl = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Alacritty camera bind group layout"),
@@ -183,11 +183,11 @@ impl TerminalPipelines {
                 fragment: Some(FragmentState {
                     module: &shader,
                     entry_point: fs,
-                    targets: &[ColorTargetState {
+                    targets: &[Some(ColorTargetState {
                         format,
                         blend: Some(BlendState::ALPHA_BLENDING),
                         write_mask: ColorWrites::COLOR,
-                    }],
+                    })],
                 }),
                 multiview: None,
             })
@@ -238,8 +238,9 @@ impl TerminalPipelines {
         depth: RenderTargetHandle,
     ) {
         let mut builder = graph.add_node("terminal");
-        let output_handle = builder.add_render_target_output(output);
-        let depth_handle = builder.add_render_target_output(depth);
+        let output_handle = builder.add_render_target(output, NodeResourceUsage::Output);
+        let depth_handle = builder.add_render_target(depth, NodeResourceUsage::Input);
+
         let rpass_handle = builder.add_renderpass(RenderPassTargets {
             targets: vec![RenderPassTarget {
                 color: output_handle,
@@ -247,30 +248,20 @@ impl TerminalPipelines {
                 resolve: None,
             }],
             depth_stencil: Some(RenderPassDepthTarget {
-                target: DepthHandle::RenderTarget(depth_handle),
+                target: depth_handle,
                 depth_clear: Some(0.0),
                 stencil_clear: None,
             }),
         });
 
-        let pipelines = builder.passthrough_ref(self);
+        builder.build(move |mut ctx| {
+            let rpass = ctx.encoder_or_pass.take_rpass(rpass_handle);
+            let vp = ctx.data_core.camera_manager.view_proj();
 
-        let draws: Vec<_> = draws
-            .iter()
-            .map(|draw| builder.passthrough_ref(*draw))
-            .collect();
-
-        builder.build(
-            move |pt, _renderer, encoder_or_pass, _temps, _ready, graph_data| {
-                let pipelines = pt.get(pipelines);
-                let rpass = encoder_or_pass.get_rpass(rpass_handle);
-                let vp = graph_data.camera_manager.view_proj();
-
-                for draw in draws {
-                    pipelines.draw_terminal(pt.get(draw), rpass, vp);
-                }
-            },
-        );
+            for draw in draws {
+                self.draw_terminal(draw, rpass, vp);
+            }
+        });
     }
 
     /// Renders a single [TerminalDrawState].

@@ -424,8 +424,8 @@ impl TerminalCanvas {
             touched.get_mut(style).push(glyph);
 
             vertices.extend(bitmap.vertices.iter().map(|v| GlyphVertex {
-                position: v.position * self.state.units_per_em + offset,
-                tex_coords: v.tex_coords,
+                position: Vec2::from((v.position * self.state.units_per_em).to_array()) + offset,
+                tex_coords: v.tex_coords.to_array().into(),
                 color,
             }));
 

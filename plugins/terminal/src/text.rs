@@ -143,6 +143,8 @@ impl FaceAtlas {
             depth_or_array_layers: 1,
         };
 
+        let format = TextureFormat::Rgba8Unorm;
+
         let texture = device.create_texture_with_data(
             &queue,
             &TextureDescriptor {
@@ -151,7 +153,8 @@ impl FaceAtlas {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
-                format: TextureFormat::Rgba8Unorm,
+                format,
+                view_formats: &[format],
                 usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
             },
             &vec![0u8; (atlas.width * atlas.height * 4) as usize],
@@ -189,8 +192,8 @@ impl FaceAtlas {
                     bitmap.data_bytes(),
                     ImageDataLayout {
                         offset: 0,
-                        bytes_per_row: std::num::NonZeroU32::new(glyph.size.x * 4),
-                        rows_per_image: std::num::NonZeroU32::new(glyph.size.y),
+                        bytes_per_row: Some(glyph.size.x * 4),
+                        rows_per_image: Some(glyph.size.y),
                     },
                     Extent3d {
                         width: glyph.size.x,

@@ -17,35 +17,35 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 struct SolidVertexIn {
-    [[location(0)]] position: vec2<f32>;
-    [[location(1)]] color: vec4<f32>;
+    @location(0) position: vec2<f32>,
+    @location(1) color: vec4<f32>,
 };
 
 struct SolidVertexOut {
-    [[builtin(position)]] clip_position: vec4<f32>;
-    [[location(0)]] color: vec4<f32>;
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) color: vec4<f32>,
 };
 
 struct GlyphVertexIn {
-    [[location(0)]] position: vec2<f32>;
-    [[location(1)]] tex_coords: vec2<f32>;
-    [[location(2)]] color: vec4<f32>;
+    @location(0) position: vec2<f32>,
+    @location(1) tex_coords: vec2<f32>,
+    @location(2) color: vec4<f32>,
 };
 
 struct GlyphVertexOut {
-    [[builtin(position)]] clip_position: vec4<f32>;
-    [[location(0)]] tex_coords: vec2<f32>;
-    [[location(1)]] color: vec4<f32>;
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) tex_coords: vec2<f32>,
+    @location(1) color: vec4<f32>,
 };
 
 struct CameraUniform {
-    mvp: mat4x4<f32>;
+    mvp: mat4x4<f32>,
 };
 
-[[group(0), binding(0)]] var<uniform> camera: CameraUniform;
+@group(0) @binding(0) var<uniform> camera: CameraUniform;
 
-[[group(1), binding(0)]] var t_msdf: texture_2d<f32>;
-[[group(1), binding(1)]] var s_msdf: sampler;
+@group(1) @binding(0) var t_msdf: texture_2d<f32>;
+@group(1) @binding(1) var s_msdf: sampler;
 
 fn srgb_to_linear(l: vec3<f32>) -> vec3<f32> {
     let cutoff = l > vec3<f32>(0.0405);
@@ -54,7 +54,7 @@ fn srgb_to_linear(l: vec3<f32>) -> vec3<f32> {
     return select(lower, higher, cutoff);
 }
 
-[[stage(vertex)]]
+@vertex
 fn solid_vs(in: SolidVertexIn) -> SolidVertexOut {
     var out: SolidVertexOut;
     out.clip_position = camera.mvp * vec4<f32>(in.position, 0.0, 1.0);
@@ -62,13 +62,13 @@ fn solid_vs(in: SolidVertexIn) -> SolidVertexOut {
     return out;
 }
 
-[[stage(fragment)]]
-fn solid_fs(frag: SolidVertexOut) -> [[location(0)]] vec4<f32> {
+@fragment
+fn solid_fs(frag: SolidVertexOut) -> @location(0) vec4<f32> {
     return frag.color;
 }
 
-[[stage(vertex)]]
-fn glyph_vs(in: GlyphVertexIn, [[builtin(vertex_index)]] in_vertex_index: u32) -> GlyphVertexOut {
+@vertex
+fn glyph_vs(in: GlyphVertexIn, @builtin(vertex_index) in_vertex_index: u32) -> GlyphVertexOut {
     var out: GlyphVertexOut;
     out.clip_position = camera.mvp * vec4<f32>(in.position, 0.0, 1.0);
     out.tex_coords = in.tex_coords;
@@ -87,8 +87,8 @@ fn median(r: f32, g: f32, b: f32) -> f32 {
     return max(min(r, g), min(max(r, g), b));
 }
 
-[[stage(fragment)]]
-fn glyph_fs(frag: GlyphVertexOut) -> [[location(0)]] vec4<f32> {
+@fragment
+fn glyph_fs(frag: GlyphVertexOut) -> @location(0) vec4<f32> {
     let msd = textureSample(t_msdf, s_msdf, frag.tex_coords);
     let sd = median(msd.r, msd.g, msd.b);
     let dist = screen_px_range(frag.tex_coords) * (sd - 0.5);

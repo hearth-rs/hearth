@@ -22,7 +22,7 @@ use bytemuck::{Pod, Zeroable};
 use flume::{unbounded, Receiver, Sender};
 use glam::Vec3;
 use hearth_rend3::{
-    rend3::graph::{DepthHandle, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets},
+    rend3::graph::{NodeResourceUsage, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets},
     utils::DynamicMesh,
     wgpu::*,
     Node, Rend3Plugin, Routine, RoutineInfo,
@@ -159,7 +159,7 @@ impl DebugDrawRoutine {
         let shader = rend3
             .iad
             .device
-            .create_shader_module(&include_wgsl!("shaders.wgsl"));
+            .create_shader_module(include_wgsl!("shaders.wgsl"));
 
         let bgl = rend3
             .iad
@@ -213,11 +213,11 @@ impl DebugDrawRoutine {
                 fragment: Some(FragmentState {
                     module: &shader,
                     entry_point: "fs_main",
-                    targets: &[ColorTargetState {
+                    targets: &[Some(ColorTargetState {
                         format: rend3.surface_format,
                         blend: None,
                         write_mask: ColorWrites::COLOR,
-                    }],
+                    })],
                 }),
                 multiview: None,
             });
@@ -256,12 +256,13 @@ struct DebugDrawNode<'a> {
 
 impl<'a> Node<'a> for DebugDrawNode<'a> {
     fn draw<'graph>(&'graph self, info: &mut RoutineInfo<'_, 'graph>) {
-        let output = info.graph.add_surface_texture();
-        let depth = info.state.depth;
-
         let mut builder = info.graph.add_node("debug draw");
-        let output_handle = builder.add_render_target_output(output);
-        let depth_handle = builder.add_render_target_output(depth);
+        let output_handle =
+            builder.add_render_target(info.output_handle, NodeResourceUsage::Output);
+        let depth_handle = builder.add_render_target(
+            info.state.depth.rendering_target(),
+            NodeResourceUsage::InputOutput,
+        );
 
         let rpass_handle = builder.add_renderpass(RenderPassTargets {
             targets: vec![RenderPassTarget {
@@ -270,38 +271,33 @@ impl<'a> Node<'a> for DebugDrawNode<'a> {
                 resolve: None,
             }],
             depth_stencil: Some(RenderPassDepthTarget {
-                target: DepthHandle::RenderTarget(depth_handle),
+                target: depth_handle,
                 depth_clear: Some(0.0),
                 stencil_clear: None,
             }),
         });
 
-        let routine = builder.passthrough_ref(self.routine);
+        builder.build(move |mut ctx| {
+            let rpass = ctx.encoder_or_pass.take_rpass(rpass_handle);
+            let mvp = ctx.data_core.camera_manager.view_proj();
 
-        builder.build(
-            move |pt, _renderer, encoder_or_pass, _temps, _ready, graph_data| {
-                let routine = pt.get(routine);
-                let rpass = encoder_or_pass.get_rpass(rpass_handle);
-                let mvp = graph_data.camera_manager.view_proj();
+            self.routine.queue.write_buffer(
+                &self.routine.camera_buffer,
+                0,
+                bytemuck::bytes_of(&CameraUniform { mvp }),
+            );
 
-                routine.queue.write_buffer(
-                    &routine.camera_buffer,
-                    0,
-                    bytemuck::bytes_of(&CameraUniform { mvp }),
-                );
+            rpass.set_pipeline(&self.routine.pipeline);
+            rpass.set_bind_group(0, &self.routine.camera_bind_group, &[]);
 
-                rpass.set_pipeline(&routine.pipeline);
-                rpass.set_bind_group(0, &routine.camera_bind_group, &[]);
-
-                for draw in routine.draws.values() {
-                    if draw.hide {
-                        continue;
-                    }
-
-                    draw.mesh.draw(rpass);
+            for draw in self.routine.draws.values() {
+                if draw.hide {
+                    continue;
                 }
-            },
-        );
+
+                draw.mesh.draw(rpass);
+            }
+        });
     }
 }
 

@@ -34,15 +34,14 @@ impl CanvasWrapper {
     }
 
     /// Send a new buffer to be drawn from a raqote DrawTarget.
-    fn update_with_draw_target(&self, dt: DrawTarget) {
+    fn update_with_draw_target(&self, dt: &DrawTarget) {
         self.update(Pixels {
             width: dt.width() as u32,
             height: dt.height() as u32,
             data: dt
                 .get_data_u8()
                 .chunks_exact(4)
-                .map(|pix| [pix[2], pix[1], pix[0], pix[3]])
-                .flatten()
+                .flat_map(|pix| [pix[2], pix[1], pix[0], pix[3]])
                 .collect(),
         });
     }
@@ -52,15 +51,17 @@ impl CanvasWrapper {
 struct Slider {
     track_size: Vec2,
     handle_pos: i32,
+    handle_grab: Option<i32>,
     handle_size: Vec2,
 }
 
 impl Default for Slider {
     fn default() -> Self {
         Self {
-            track_size: Vec2::new(5.0, 200.0),
+            track_size: Vec2::new(4.0, 200.0),
             handle_pos: 0,
-            handle_size: Vec2::new(20.0, 5.0),
+            handle_grab: None,
+            handle_size: Vec2::new(20.0, 8.0),
         }
     }
 }
@@ -77,15 +78,43 @@ impl Slider {
             &DrawOptions::new(),
         );
 
+        let color = if self.handle_grab.is_some() {
+            source_from_rgb(255, 0, 0)
+        } else {
+            source_from_rgb(0, 0, 255)
+        };
+
         // draw the handle of the slider
         dt.fill_rect(
             -(self.handle_size.x / 2.0),
-            0.0 + self.handle_pos as f32,
+            -(self.handle_size.y / 2.0) + self.handle_pos as f32,
             self.handle_size.x,
             self.handle_size.y,
-            &source_from_rgb(255, 0, 0),
+            &color,
             &DrawOptions::new(),
         );
+    }
+
+    fn on_drag_start(&mut self, pos: Vec2) {
+        let handle_pos = Vec2::new(0.0, self.handle_pos as f32);
+        let pos = (pos - handle_pos).abs() * 2.0;
+
+        if pos.x > self.handle_size.x || pos.y > self.handle_size.y {
+            return;
+        }
+
+        self.handle_grab = Some(self.handle_pos);
+    }
+
+    fn on_drag_end(&mut self) {
+        self.handle_grab = None;
+    }
+
+    fn on_drag_move(&mut self, delta: Vec2) {
+        if let Some(grab) = self.handle_grab.as_ref() {
+            self.handle_pos = *grab + delta.y.round() as i32;
+            self.handle_pos = self.handle_pos.clamp(0, self.track_size.y.ceil() as i32);
+        }
     }
 }
 
@@ -107,16 +136,80 @@ pub extern "C" fn run() {
     let events_cap = events.make_capability(Permissions::SEND);
     window.send_json(&WindowCommand::Subscribe, &[&events_cap]);
 
-    let canvas = spawn_canvas(&canvas_factory, CanvasSamplingMode::Nearest);
-    let mut dt = DrawTarget::new(400, 400);
-    dt.clear(SolidSource::from_unpremultiplied_argb(
-        0xff, 0x15, 0x10, 0x14,
-    ));
-    let slider = Slider::default();
-    dt.set_transform(&Transform::translation(100.0, 100.0));
-    slider.draw(&mut dt);
+    window.send_json(
+        &WindowCommand::SetCamera {
+            vfov: 90.0,
+            near: 0.01,
+            view: Default::default(),
+        },
+        &[],
+    );
 
-    canvas.update_with_draw_target(dt);
+    let canvas = spawn_canvas(&canvas_factory, CanvasSamplingMode::Nearest);
+    let canvas_size = (400, 400);
+    let mut dt = DrawTarget::new(canvas_size.0, canvas_size.1);
+    let mut window_size = Vec2::new(10.0, 10.0);
+    let mut slider = Slider::default();
+    let mut cursor_pos = Vec2::ZERO;
+    let slider_pos = Vec2::new(100.0, 100.0);
+    let mut grab_start: Option<Vec2> = None;
+
+    loop {
+        let (msg, _) = events.recv_json::<WindowEvent>();
+        let mut redraw = false;
+
+        match msg {
+            WindowEvent::Resized(size) => {
+                window_size = size.as_vec2();
+            }
+            WindowEvent::CursorMoved { position: new_pos } => {
+                let aspect = window_size.x / window_size.y;
+                let window_space = new_pos.as_vec2() / window_size;
+
+                let x = window_space.x * aspect - (aspect - 1.0) / 2.0;
+                let y = window_space.y;
+
+                cursor_pos = (Vec2::new(x, y)
+                    * Vec2::new(canvas_size.0 as f32, canvas_size.1 as f32))
+                .round();
+
+                if let Some(start) = grab_start.as_ref() {
+                    let delta = cursor_pos - *start;
+                    slider.on_drag_move(delta);
+                    redraw = true;
+                }
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+            } => {
+                grab_start = Some(cursor_pos);
+                slider.on_drag_start(cursor_pos - slider_pos);
+                redraw = true;
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+            } => {
+                grab_start = None;
+                slider.on_drag_end();
+                redraw = true;
+            }
+            _ => {}
+        }
+
+        if !redraw {
+            continue;
+        }
+
+        dt.clear(SolidSource::from_unpremultiplied_argb(
+            0xff, 0x15, 0x10, 0x14,
+        ));
+
+        dt.set_transform(&Transform::translation(slider_pos.x, slider_pos.y));
+        slider.draw(&mut dt);
+        canvas.update_with_draw_target(&dt);
+    }
 }
 
 /// Spawns a new canvas 1 unit in front of the camera's default position
@@ -124,7 +217,7 @@ fn spawn_canvas(canvas_factory: &CanvasFactory, sampling: CanvasSamplingMode) ->
     let position = Position {
         origin: Vec3::new(0.0, 0.0, -1.0),
         orientation: Default::default(),
-        half_size: Vec2::new(0.5, 0.5),
+        half_size: Vec2::new(1.0, 1.0),
     };
 
     let request = FactoryRequest::CreateCanvas {

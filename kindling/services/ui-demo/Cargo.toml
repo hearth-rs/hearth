@@ -1,0 +1,17 @@
+[package]
+name = "kindling-ui-demo"
+version = "0.1.0"
+edition = "2021"
+description = "A demo of some basic Hearth UI"
+
+[package.metadata.service]
+name = "rs.hearth.kindling.uiDemo"
+targets = []
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hearth-guest.workspace = true
+glam = "0.20"
+raqote = {version = "0.8", default-features = false}

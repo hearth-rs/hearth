@@ -155,47 +155,53 @@ pub extern "C" fn run() {
     let mut grab_start: Option<Vec2> = None;
 
     loop {
-        let (msg, _) = events.recv_json::<WindowEvent>();
         let mut redraw = false;
 
-        match msg {
-            WindowEvent::Resized(size) => {
-                window_size = size.as_vec2();
-            }
-            WindowEvent::CursorMoved { position: new_pos } => {
-                let aspect = window_size.x / window_size.y;
-                let window_space = new_pos.as_vec2() / window_size;
+        loop {
+            let (msg, _) = events.recv_json::<WindowEvent>();
 
-                let x = window_space.x * aspect - (aspect - 1.0) / 2.0;
-                let y = window_space.y;
+            match msg {
+                WindowEvent::Resized(size) => {
+                    window_size = size.as_vec2();
+                }
+                WindowEvent::CursorMoved { position: new_pos } => {
+                    let aspect = window_size.x / window_size.y;
+                    let window_space = new_pos.as_vec2() / window_size;
 
-                cursor_pos = (Vec2::new(x, y)
-                    * Vec2::new(canvas_size.0 as f32, canvas_size.1 as f32))
-                .round();
+                    let x = window_space.x * aspect - (aspect - 1.0) / 2.0;
+                    let y = window_space.y;
 
-                if let Some(start) = grab_start.as_ref() {
-                    let delta = cursor_pos - *start;
-                    slider.on_drag_move(delta);
+                    cursor_pos = (Vec2::new(x, y)
+                        * Vec2::new(canvas_size.0 as f32, canvas_size.1 as f32))
+                    .round();
+
+                    if let Some(start) = grab_start.as_ref() {
+                        let delta = cursor_pos - *start;
+                        slider.on_drag_move(delta);
+                        redraw = true;
+                    }
+                }
+                WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    button: MouseButton::Left,
+                } => {
+                    grab_start = Some(cursor_pos);
+                    slider.on_drag_start(cursor_pos - slider_pos);
                     redraw = true;
                 }
+                WindowEvent::MouseInput {
+                    state: ElementState::Released,
+                    button: MouseButton::Left,
+                } => {
+                    grab_start = None;
+                    slider.on_drag_end();
+                    redraw = true;
+                }
+                WindowEvent::Redraw { .. } => {
+                    break;
+                }
+                _ => {}
             }
-            WindowEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: MouseButton::Left,
-            } => {
-                grab_start = Some(cursor_pos);
-                slider.on_drag_start(cursor_pos - slider_pos);
-                redraw = true;
-            }
-            WindowEvent::MouseInput {
-                state: ElementState::Released,
-                button: MouseButton::Left,
-            } => {
-                grab_start = None;
-                slider.on_drag_end();
-                redraw = true;
-            }
-            _ => {}
         }
 
         if !redraw {

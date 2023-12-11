@@ -16,11 +16,17 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use glam::{Vec2, Vec3};
+use glam::{vec2, Vec2, Vec3};
 use hearth_guest::{canvas::*, window::*, *};
 use raqote::*;
 
 pub type CanvasFactory = RequestResponse<FactoryRequest, FactoryResponse>;
+
+static DRAW_OPTIONS: DrawOptions = DrawOptions {
+    antialias: AntialiasMode::None,
+    blend_mode: BlendMode::SrcOver,
+    alpha: 1.,
+};
 
 /// A wrapper around the canvas Capability.
 struct CanvasWrapper {
@@ -48,50 +54,104 @@ impl CanvasWrapper {
 }
 
 /// A UI slider object
-struct Slider {
+struct Slider<'a> {
     track_size: Vec2,
+    track_source: Source<'a>,
     handle_pos: i32,
     handle_grab: Option<i32>,
     handle_size: Vec2,
+    handle_source: Source<'a>,
+    handle_grab_source: Source<'a>,
 }
 
-impl Default for Slider {
+impl<'a> Default for Slider<'a> {
     fn default() -> Self {
         Self {
-            track_size: Vec2::new(4.0, 200.0),
-            handle_pos: 0,
+            track_size: Vec2::new(4.0, 100.0),
+            track_source: source_from_rgb(255, 255, 255),
+            handle_pos: 1,
             handle_grab: None,
             handle_size: Vec2::new(20.0, 8.0),
+            handle_source: source_from_rgb(255, 255, 255),
+            handle_grab_source: source_from_rgb(0xd7, 0xd9, 0xd6),
         }
     }
 }
 
-impl Slider {
+impl<'a> Slider<'a> {
     fn draw(&self, dt: &mut DrawTarget) {
-        // draw the track of the slider
-        dt.fill_rect(
-            -(self.track_size.x / 2.0),
+        let half_handle_size = self.handle_size * 0.5;
+        let half_track_size = self.track_size * 0.5;
+        let mut pb = PathBuilder::new();
+        pb.rect(
+            -half_track_size.x,
             0.0,
             self.track_size.x,
             self.track_size.y,
-            &source_from_rgb(0xff, 0xff, 0xff),
-            &DrawOptions::new(),
+        );
+        let path = pb.finish();
+        dt.fill(&path, &self.track_source, &DRAW_OPTIONS);
+        dt.stroke(
+            &path,
+            &source_from_rgb(0, 0, 0),
+            &StrokeStyle {
+                width: 1.0,
+                join: LineJoin::Round,
+                ..Default::default()
+            },
+            &DRAW_OPTIONS,
         );
 
-        let color = if self.handle_grab.is_some() {
-            source_from_rgb(255, 0, 0)
+        let mut draw_tick = |pos: Vec2| {
+            let mut pb = PathBuilder::new();
+            pb.rect(pos.x, pos.y - 1.0, 5.0, 2.0);
+            let path = pb.finish();
+            dt.fill(&path, &source_from_rgb(255, 255, 255), &DRAW_OPTIONS);
+            dt.stroke(
+                &path,
+                &source_from_rgb(0, 0, 0),
+                &StrokeStyle {
+                    width: 1.0,
+                    join: LineJoin::Round,
+                    ..Default::default()
+                },
+                &DRAW_OPTIONS,
+            );
+        };
+        let l_tick = -10.0;
+        let r_tick = 5.0;
+        draw_tick(vec2(l_tick, 1.0));
+        draw_tick(vec2(r_tick, 1.0));
+        draw_tick(vec2(l_tick, half_track_size.y));
+        draw_tick(vec2(r_tick, half_track_size.y));
+        draw_tick(vec2(l_tick, self.track_size.y - 1.0));
+        draw_tick(vec2(r_tick, self.track_size.y - 1.0));
+
+        let handle_source = if self.handle_grab.is_some() {
+            self.handle_grab_source.clone()
         } else {
-            source_from_rgb(0, 0, 255)
+            self.handle_source.clone()
         };
 
         // draw the handle of the slider
-        dt.fill_rect(
-            -(self.handle_size.x / 2.0),
-            -(self.handle_size.y / 2.0) + self.handle_pos as f32,
+        let mut pb = PathBuilder::new();
+        pb.rect(
+            -(half_handle_size.x),
+            -(half_handle_size.y) + self.handle_pos as f32,
             self.handle_size.x,
             self.handle_size.y,
-            &color,
-            &DrawOptions::new(),
+        );
+        let path = pb.finish();
+        dt.fill(&path, &handle_source, &DRAW_OPTIONS);
+        dt.stroke(
+            &path,
+            &source_from_rgb(0, 0, 0),
+            &StrokeStyle {
+                width: 1.0,
+                join: LineJoin::Round,
+                ..Default::default()
+            },
+            &DRAW_OPTIONS,
         );
     }
 
@@ -113,7 +173,9 @@ impl Slider {
     fn on_drag_move(&mut self, delta: Vec2) {
         if let Some(grab) = self.handle_grab.as_ref() {
             self.handle_pos = *grab + delta.y.round() as i32;
-            self.handle_pos = self.handle_pos.clamp(0, self.track_size.y.ceil() as i32);
+            self.handle_pos = self
+                .handle_pos
+                .clamp(1, self.track_size.y.ceil() as i32 - 1);
         }
     }
 }
@@ -209,7 +271,7 @@ pub extern "C" fn run() {
         }
 
         dt.clear(SolidSource::from_unpremultiplied_argb(
-            0xff, 0x15, 0x10, 0x14,
+            0xff, 0xd6, 0xf4, 0xfe,
         ));
 
         dt.set_transform(&Transform::translation(slider_pos.x, slider_pos.y));

@@ -16,6 +16,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use std::sync::{Arc, Mutex};
+
+use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache};
 use glam::{vec2, Vec2, Vec3};
 use hearth_guest::{canvas::*, window::*, *};
 use raqote::*;
@@ -50,6 +53,52 @@ impl CanvasWrapper {
                 .flat_map(|pix| [pix[2], pix[1], pix[0], pix[3]])
                 .collect(),
         });
+    }
+}
+
+#[derive(Clone)]
+struct TextResources {
+    fs: Arc<Mutex<FontSystem>>,
+    ss: Arc<Mutex<SwashCache>>,
+}
+
+struct Label {
+    res: TextResources,
+    buffer: Buffer,
+}
+
+impl Label {
+    fn new(res: TextResources, text: &str) -> Self {
+        let mut fs = res.fs.lock().unwrap();
+        let metrics = Metrics::new(14.0, 20.0);
+        let mut buffer = Buffer::new(&mut fs, metrics);
+        buffer.set_size(&mut fs, 400.0, 25.0);
+        let attrs = Attrs::new();
+        buffer.set_text(&mut fs, text, attrs, Shaping::Advanced);
+        buffer.shape_until_scroll(&mut fs);
+        drop(fs);
+
+        Self { res, buffer }
+    }
+
+    fn draw(&self, dt: &mut DrawTarget) {
+        let mut fs = self.res.fs.lock().unwrap();
+        let mut ss = self.res.ss.lock().unwrap();
+        let text_color = cosmic_text::Color::rgb(0x00, 0x00, 0x00);
+        self.buffer
+            .draw(&mut fs, &mut ss, text_color, |x, y, w, h, color| {
+                dt.fill_rect(
+                    x as f32,
+                    y as f32 - 10.0,
+                    w as f32,
+                    h as f32,
+                    &source_from_rgb(color.r(), color.g(), color.b()),
+                    &DrawOptions {
+                        alpha: color.a() as f32 / 255.0,
+                        ..DRAW_OPTIONS
+                    },
+                );
+            });
     }
 }
 
@@ -208,17 +257,38 @@ pub extern "C" fn run() {
     );
 
     let canvas = spawn_canvas(&canvas_factory, CanvasSamplingMode::Nearest);
-    let canvas_size = (400, 400);
+    let canvas_size = (200, 200);
     let mut dt = DrawTarget::new(canvas_size.0, canvas_size.1);
     let mut window_size = Vec2::new(10.0, 10.0);
     let mut slider = Slider::default();
     let mut cursor_pos = Vec2::ZERO;
-    let slider_pos = Vec2::new(100.0, 100.0);
+    let slider_pos = Vec2::new(100.0, 50.0);
     let mut grab_start: Option<Vec2> = None;
 
-    loop {
-        let mut redraw = false;
+    let mut font_system = FontSystem::new();
 
+    font_system
+        .db_mut()
+        .load_font_data(notosans::REGULAR_TTF.to_vec());
+
+    font_system
+        .db_mut()
+        .load_font_data(include_bytes!("/usr/share/fonts/noto/NotoColorEmoji.ttf").to_vec());
+
+    let swash_cache = SwashCache::new();
+
+    let res = TextResources {
+        fs: Arc::new(Mutex::new(font_system)),
+        ss: Arc::new(Mutex::new(swash_cache)),
+    };
+
+    let label = Label::new(res.clone(), "Hello, Hearth! 💜\n");
+    let max = Label::new(res.clone(), "Max");
+    let zero = Label::new(res.clone(), "0");
+    let min = Label::new(res.clone(), "Min");
+
+    let mut redraw = true;
+    loop {
         loop {
             let (msg, _) = events.recv_json::<WindowEvent>();
 
@@ -274,9 +344,27 @@ pub extern "C" fn run() {
             0xff, 0xd6, 0xf4, 0xfe,
         ));
 
-        dt.set_transform(&Transform::translation(slider_pos.x, slider_pos.y));
+        let translate = Transform::translation;
+
+        dt.set_transform(&translate(slider_pos.x, slider_pos.y));
         slider.draw(&mut dt);
+
+        dt.set_transform(&translate(10.0, 15.0));
+        label.draw(&mut dt);
+
+        let label_x = slider_pos.x - 40.0;
+
+        dt.set_transform(&translate(label_x, slider_pos.y));
+        max.draw(&mut dt);
+
+        dt.set_transform(&translate(label_x, slider_pos.y + 50.0));
+        zero.draw(&mut dt);
+
+        dt.set_transform(&translate(label_x, slider_pos.y + 100.0));
+        min.draw(&mut dt);
+
         canvas.update_with_draw_target(&dt);
+        redraw = false;
     }
 }
 

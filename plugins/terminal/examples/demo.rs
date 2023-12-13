@@ -20,8 +20,7 @@ use std::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 
 use glam::Vec2;
-use hearth_rend3::rend3::graph::RenderGraph;
-use hearth_rend3::rend3::util::output::OutputFrame;
+use hearth_rend3::rend3::graph::{RenderGraph, ViewportRect};
 use hearth_rend3::rend3::{types::*, Renderer};
 use hearth_rend3::rend3_routine::base::{BaseRenderGraph, BaseRenderGraphIntermediateState};
 use hearth_rend3::wgpu::{self, TextureFormat};
@@ -45,7 +44,7 @@ pub struct DemoInner {
     pipelines: TerminalPipelines,
     draw_state: TerminalDrawState,
     terminal: Arc<Terminal>,
-    skybox: TextureHandle,
+    skybox: TextureCubeHandle,
     orbit_pitch: f32,
     orbit_yaw: f32,
     orbit_distance: f32,
@@ -206,6 +205,7 @@ impl rend3_framework::App for Demo {
 
     fn setup(
         &mut self,
+        _event_loop: &winit::event_loop::EventLoop<rend3_framework::UserResizeEvent<()>>,
         _window: &winit::window::Window,
         renderer: &Arc<Renderer>,
         routines: &Arc<rend3_framework::DefaultRoutines>,
@@ -327,46 +327,57 @@ impl rend3_framework::App for Demo {
                     ),
                 });
 
-                let frame = OutputFrame::Surface {
-                    surface: Arc::clone(surface.unwrap()),
-                };
+                let frame = surface.unwrap().get_current_texture().unwrap();
+
+                renderer.swap_instruction_buffers();
+                let mut eval_output = renderer.evaluate_instructions();
 
                 inner.terminal.update_draw_state(&mut inner.draw_state);
 
-                let pbr_routine = rend3_framework::lock(&routines.pbr);
                 let mut skybox_routine = rend3_framework::lock(&routines.skybox);
                 let tonemapping_routine = rend3_framework::lock(&routines.tonemapping);
-
-                let (cmd_bufs, ready) = renderer.ready();
-                skybox_routine.ready(renderer);
+                skybox_routine.evaluate(renderer);
 
                 let mut graph = RenderGraph::new();
 
-                base_rendergraph.add_to_graph(
-                    &mut graph,
-                    &ready,
-                    &pbr_routine,
-                    Some(&skybox_routine),
-                    &tonemapping_routine,
-                    resolution,
-                    SAMPLE_COUNT,
-                    glam::Vec4::ZERO,
+                let frame_handle = graph.add_imported_render_target(
+                    &frame,
+                    0..1,
+                    0..1,
+                    ViewportRect::from_size(resolution),
                 );
 
                 let state = BaseRenderGraphIntermediateState::new(
                     &mut graph,
-                    &ready,
+                    &eval_output,
                     resolution,
                     SAMPLE_COUNT,
                 );
 
-                let draws = &[&inner.draw_state];
-                let output = graph.add_surface_texture();
-                inner
-                    .pipelines
-                    .add_to_graph(draws, &mut graph, output, state.depth);
+                state.create_frame_uniforms(
+                    &mut graph,
+                    base_rendergraph,
+                    glam::Vec4::ZERO,
+                    resolution,
+                );
 
-                graph.execute(renderer, frame, cmd_bufs, &ready);
+                state.clear(&mut graph, glam::Vec4::ZERO);
+
+                state.skybox(&mut graph, Some(&skybox_routine), SAMPLE_COUNT);
+
+                state.tonemapping(&mut graph, &tonemapping_routine, frame_handle);
+
+                let draws = &[&inner.draw_state];
+                inner.pipelines.add_to_graph(
+                    draws,
+                    &mut graph,
+                    frame_handle,
+                    state.depth.rendering_target(),
+                );
+
+                graph.execute(renderer, &mut eval_output);
+
+                frame.present();
             }
             _ => {}
         }

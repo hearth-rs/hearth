@@ -238,7 +238,7 @@ impl TerminalPipelines {
         depth: RenderTargetHandle,
     ) {
         let mut builder = graph.add_node("terminal");
-        let output_handle = builder.add_render_target(output, NodeResourceUsage::Output);
+        let output_handle = builder.add_render_target(output, NodeResourceUsage::InputOutput);
         let depth_handle = builder.add_render_target(depth, NodeResourceUsage::Input);
 
         let rpass_handle = builder.add_renderpass(RenderPassTargets {

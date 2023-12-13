@@ -16,9 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache};
 use glam::{vec2, Vec2, Vec3};
 use hearth_guest::{canvas::*, window::*, *};
 use raqote::*;
@@ -56,49 +55,53 @@ impl CanvasWrapper {
     }
 }
 
-#[derive(Clone)]
-struct TextResources {
-    fs: Arc<Mutex<FontSystem>>,
-    ss: Arc<Mutex<SwashCache>>,
-}
-
-struct Label {
-    res: TextResources,
-    buffer: Buffer,
+pub struct Label {
+    font: Arc<bdf::Font>,
+    content: String,
 }
 
 impl Label {
-    fn new(res: TextResources, text: &str) -> Self {
-        let mut fs = res.fs.lock().unwrap();
-        let metrics = Metrics::new(14.0, 20.0);
-        let mut buffer = Buffer::new(&mut fs, metrics);
-        buffer.set_size(&mut fs, 400.0, 25.0);
-        let attrs = Attrs::new();
-        buffer.set_text(&mut fs, text, attrs, Shaping::Advanced);
-        buffer.shape_until_scroll(&mut fs);
-        drop(fs);
-
-        Self { res, buffer }
+    pub fn new(font: Arc<bdf::Font>, content: String) -> Self {
+        Self { font, content }
     }
 
-    fn draw(&self, dt: &mut DrawTarget) {
-        let mut fs = self.res.fs.lock().unwrap();
-        let mut ss = self.res.ss.lock().unwrap();
-        let text_color = cosmic_text::Color::rgb(0x00, 0x00, 0x00);
-        self.buffer
-            .draw(&mut fs, &mut ss, text_color, |x, y, w, h, color| {
-                dt.fill_rect(
-                    x as f32,
-                    y as f32 - 10.0,
-                    w as f32,
-                    h as f32,
-                    &source_from_rgb(color.r(), color.g(), color.b()),
-                    &DrawOptions {
-                        alpha: color.a() as f32 / 255.0,
-                        ..DRAW_OPTIONS
-                    },
-                );
-            });
+    pub fn draw(&self, dt: &mut DrawTarget) {
+        let mut cursor = 0;
+        for c in self.content.chars() {
+            let Some(glyph) = self.font.glyphs().get(&c) else {
+                continue;
+            };
+
+            let (mut ox, mut oy) = glyph
+                .vector()
+                .map(|(x, y)| (*x as i32, *y as i32))
+                .unwrap_or((glyph.bounds().x, glyph.bounds().y));
+
+            ox += cursor;
+            oy += glyph.bounds().height as i32 - self.font.bounds().height as i32 + 10;
+
+            for py in 0..glyph.height() {
+                for px in 0..glyph.width() {
+                    if !glyph.get(px, py) {
+                        continue;
+                    }
+
+                    dt.fill_rect(
+                        (px as i32 + ox) as f32,
+                        (py as i32 - oy) as f32,
+                        1.0,
+                        1.0,
+                        &source_from_rgb(0, 0, 0),
+                        &DRAW_OPTIONS,
+                    );
+                }
+            }
+
+            cursor += glyph
+                .device_width()
+                .map(|w| w.0 as i32)
+                .unwrap_or(glyph.width() as i32 + 1);
+        }
     }
 }
 
@@ -265,27 +268,12 @@ pub extern "C" fn run() {
     let slider_pos = Vec2::new(100.0, 50.0);
     let mut grab_start: Option<Vec2> = None;
 
-    let mut font_system = FontSystem::new();
+    let font = Arc::new(bdf::read(include_bytes!("cozette/cozette.bdf").as_slice()).unwrap());
 
-    font_system
-        .db_mut()
-        .load_font_data(notosans::REGULAR_TTF.to_vec());
-
-    font_system
-        .db_mut()
-        .load_font_data(include_bytes!("/usr/share/fonts/noto/NotoColorEmoji.ttf").to_vec());
-
-    let swash_cache = SwashCache::new();
-
-    let res = TextResources {
-        fs: Arc::new(Mutex::new(font_system)),
-        ss: Arc::new(Mutex::new(swash_cache)),
-    };
-
-    let label = Label::new(res.clone(), "Hello, Hearth! 💜\n");
-    let max = Label::new(res.clone(), "Max");
-    let zero = Label::new(res.clone(), "0");
-    let min = Label::new(res.clone(), "Min");
+    let label = Label::new(font.clone(), "Hello, Hearth! ♡".into());
+    let max = Label::new(font.clone(), "Max".into());
+    let zero = Label::new(font.clone(), "0".into());
+    let min = Label::new(font.clone(), "Min".into());
 
     let mut redraw = true;
     loop {

@@ -12,12 +12,7 @@ targets = []
 crate-type = ["cdylib"]
 
 [dependencies]
+bdf = "0.6"
 hearth-guest.workspace = true
 glam = "0.20"
 raqote = {version = "0.8", default-features = false}
-notosans = "0.1"
-
-[dependencies.cosmic-text]
-version = "0.10"
-default-features = false
-features = ["std", "swash"]

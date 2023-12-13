@@ -139,23 +139,23 @@ we're still working on implementing all of the most important native features.
 
 | Feature | Status | Tracker | Priority | Summary |
 |-|-|-|-|-|
-| WebAssembly scripting | Complete | N/A | pre-alpha | Dynamic execution of WebAssembly scripts as Hearth guest processes. |
-| Terminal emulators | Complete | N/A | pre-alpha | Expose creation and manipulation of 3D terminal emulators. |
-| Debug drawing | Complete | N/A | pre-alpha | Dynamic rendering of unshaded lines and wireframe meshes. |
-| Unix IPC | Complete | N/A | pre-alpha | Use Unix Domain Sockets to access Hearth from other OS processes. |
-| Filesystem | In progress | N/A | alpha | Native access to the OS's filesystem. |
-| Renderer API | In progress | [#197](https://github.com/hearth-rs/hearth/pull/197) | alpha | Expose a full 3D rendering API. |
-| Desktop windowing | In progress | [#194](https://github.com/hearth-rs/hearth/pull/194) | alpha | Expose desktop window events, including user input, and support guest manipulation of the Hearth desktop window. |
-| WebSockets | Incomplete | [#163](https://github.com/hearth-rs/hearth/issues/163) | alpha | Connect to Hearth servers using the WebSocket and TLS standards. |
-| Windows IPC | Incomplete | [#175](https://github.com/hearth-rs/hearth/issues/175) | alpha | Use Windows Named Pipes to access Hearth from Windows processes. |
-| Docker | Incomplete | N/A | alpha | Build a Docker image for reproducible, sandboxed hosting of the Hearth server. |
-| Canvases | Incomplete | N/A | alpha | Dynamic panels for efficient rendering of arbitrary bitmap data onto a flat plane. |
-| OpenXR | Incomplete | N/A | alpha | Support OpenXR as an alternative to desktop windows and expose its API to guests. |
-| Audio I/O | Incomplete | N/A | alpha | Native audio input and output for all platforms. |
-| Opus | Incomplete | N/A | alpha | Native Opus decoding and encoding for performance-sensitive audio compression. |
-| Video decoding | Incomplete | N/A | beta | Native support for decoding of common video codecs, using GPU acceleration when available. |
-| Meta Quest support | Incomplete | N/A | beta | Support building and running Hearth on the Meta Quest. |
-| Wayland compositor | Incomplete | N/A | beta | Make Hearth a Wayland compositor on Unix-based OSes and expose the API to guests. |
+| WebAssembly scripting | ✅ | N/A | pre-alpha | Dynamic execution of WebAssembly scripts as Hearth guest processes. |
+| Terminal emulators | ✅ | N/A | pre-alpha | Expose creation and manipulation of 3D terminal emulators. |
+| Debug drawing | ✅ | N/A | pre-alpha | Dynamic rendering of unshaded lines and wireframe meshes. |
+| Unix IPC | ✅ | N/A | pre-alpha | Use Unix Domain Sockets to access Hearth from other OS processes. |
+| Filesystem | 🚧 | N/A | alpha | Native access to the OS's filesystem. |
+| Renderer API | 🚧 | [#197](https://github.com/hearth-rs/hearth/pull/197) | alpha | Expose a full 3D rendering API. |
+| Desktop windowing | 🚧 | [#194](https://github.com/hearth-rs/hearth/pull/194) | alpha | Expose desktop window events, including user input, and support guest manipulation of the Hearth desktop window. |
+| WebSockets | ❌ | [#163](https://github.com/hearth-rs/hearth/issues/163) | alpha | Connect to Hearth servers using the WebSocket and TLS standards. |
+| Windows IPC | ❌ | [#175](https://github.com/hearth-rs/hearth/issues/175) | alpha | Use Windows Named Pipes to access Hearth from Windows processes. |
+| Docker | ❌ | N/A | alpha | Build a Docker image for reproducible, sandboxed hosting of the Hearth server. |
+| Canvases | ❌ | N/A | alpha | Dynamic panels for efficient rendering of arbitrary bitmap data onto a flat plane. |
+| OpenXR | ❌ | N/A | alpha | Support OpenXR as an alternative to desktop windows and expose its API to guests. |
+| Audio I/O | ❌ | N/A | alpha | Native audio input and output for all platforms. |
+| Opus | ❌ | N/A | alpha | Native Opus decoding and encoding for performance-sensitive audio compression. |
+| Video decoding | ❌ | N/A | beta | Native support for decoding of common video codecs, using GPU acceleration when available. |
+| Meta Quest support | ❌ | N/A | beta | Support building and running Hearth on the Meta Quest. |
+| Wayland compositor | ❌ | N/A | beta | Make Hearth a Wayland compositor on Unix-based OSes and expose the API to guests. |
 
 # Workspace Layout
 

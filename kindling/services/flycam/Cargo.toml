@@ -15,3 +15,4 @@ crate-type = ["cdylib"]
 bitflags = "2.4.1"
 glam = "0.20"
 hearth-guest.workspace = true
+rapier3d = "0.17"

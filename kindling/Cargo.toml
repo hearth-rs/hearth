@@ -1,8 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["init", "services/*"]
+members = ["init", "services/*", "host"]
 exclude = ["build"]
 
 [workspace.dependencies]
 hearth-guest = { path = "../guest/rust/hearth-guest"}
-
+kindling-host = { path = "host"}
+lazy_static = "1.4"
+serde = { version = "1.0.103, < 1.0.171", default-features = false, features = ["derive"] }
+serde_json = "1"

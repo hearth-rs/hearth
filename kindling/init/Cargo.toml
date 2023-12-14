@@ -7,4 +7,5 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-hearth-guest = { workspace = true }
+hearth-guest.workspace = true
+kindling-host.workspace = true

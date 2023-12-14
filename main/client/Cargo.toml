@@ -14,6 +14,7 @@ hearth-fs = { workspace = true }
 hearth-init = { workspace = true }
 hearth-network = { workspace = true }
 hearth-rend3 = { workspace = true }
+hearth-renderer = { workspace = true }
 hearth-runtime = { workspace = true }
 hearth-terminal = { workspace = true }
 hearth-time = { workspace = true }

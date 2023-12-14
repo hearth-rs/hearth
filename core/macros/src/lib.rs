@@ -73,7 +73,7 @@ pub fn impl_wasm_linker(
             #(#items_within_impl)*
             #(#link_wrapped_fns)*
         }
-        impl <T: AsMut<#impl_type> + Send + 'static> WasmLinker<T> for #impl_type {
+        impl <T: GetAbi<#impl_type> + Send + 'static> WasmLinker<T> for #impl_type {
             fn add_to_linker(linker: &mut Linker<T>) {
                 #(#wasm_linker_fns)*
             }
@@ -105,7 +105,7 @@ fn generate_linker_function(
     let internal_function = generate_internal_function(fn_method, impl_type);
     let func_wrap_call = generate_func_wrap(fn_method);
     quote! {
-        pub fn #link_fn_ident<T: AsMut<Self> + Send>(linker: &mut Linker<T>) {
+        pub fn #link_fn_ident<T: GetAbi<Self> + Send>(linker: &mut Linker<T>) {
             #internal_function
             #func_wrap_call
         }
@@ -119,15 +119,15 @@ fn generate_internal_function(fn_method: &ImplItemMethod, impl_type: &Ident) -> 
     let return_type = fn_method.sig.output.clone();
     if is_async(fn_method) {
         quote! {
-            async fn #fn_name <T: AsMut<#impl_type> + Send>(#internal_args) #return_type {
-                let this = caller.data_mut().as_mut();
+            async fn #fn_name <T: GetAbi<#impl_type> + Send>(#internal_args) #return_type {
+                let this = caller.data_mut().get_abi()?;
                 this.#fn_name(#internal_parameters).await
             }
         }
     } else {
         quote! {
-            fn #fn_name <T: AsMut<#impl_type> + Send>(#internal_args) #return_type {
-                let this = caller.data_mut().as_mut();
+            fn #fn_name <T: GetAbi<#impl_type> + Send>(#internal_args) #return_type {
+                let this = caller.data_mut().get_abi()?;
                 this.#fn_name(#internal_parameters)
             }
         }

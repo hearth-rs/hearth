@@ -16,7 +16,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::{
+    fmt::{Display, Formatter, Result as FmtResult},
+    ops::{Deref, DerefMut},
+};
 
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
@@ -35,6 +38,9 @@ pub mod protocol;
 
 /// Registry protocol.
 pub mod registry;
+
+/// Renderer protocol.
+pub mod renderer;
 
 /// Terminal protocol.
 pub mod terminal;
@@ -164,5 +170,41 @@ impl Color {
             (self.0 >> 8) as u8,
             self.0 as u8,
         )
+    }
+}
+
+/// Provides efficient byte-based de/serialization for `Vec`s of `T`.
+///
+/// Wraps `Vec<T>` and provides `AsRef<[u8]>` and `TryFrom<Vec<u8>>` for types
+/// that implement [Pod] so that vectors of `T` can be used with
+/// [serde_with::base64::Base64].
+#[derive(Clone, Debug, Hash, Deserialize, Serialize)]
+pub struct ByteVec<T>(pub Vec<T>);
+
+impl<T> Deref for ByteVec<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for ByteVec<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<T: Pod> AsRef<[u8]> for ByteVec<T> {
+    fn as_ref(&self) -> &[u8] {
+        bytemuck::cast_slice(self.0.as_slice())
+    }
+}
+
+impl<T: Pod> TryFrom<Vec<u8>> for ByteVec<T> {
+    type Error = bytemuck::PodCastError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+        bytemuck::try_cast_slice(bytes.as_slice()).map(|slice| Self(slice.to_vec()))
     }
 }

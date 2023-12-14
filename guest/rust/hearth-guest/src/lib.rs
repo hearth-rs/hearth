@@ -20,7 +20,7 @@
 
 #![warn(missing_docs)]
 
-use std::{borrow::Borrow, marker::PhantomData};
+use std::borrow::Borrow;
 
 use serde::{Deserialize, Serialize};
 
@@ -40,85 +40,6 @@ pub fn this_lump() -> LumpId {
     let mut id = LumpId(Default::default());
     unsafe { abi::lump::this_lump(&mut id as *const LumpId as u32) }
     id
-}
-
-/// A helper struct for request-response capabilities.
-pub struct RequestResponse<Request, Response> {
-    cap: Capability,
-    _request: PhantomData<Request>,
-    _response: PhantomData<Response>,
-}
-
-impl<Request, Response> AsRef<Capability> for RequestResponse<Request, Response> {
-    fn as_ref(&self) -> &Capability {
-        &self.cap
-    }
-}
-
-impl<Request, Response> RequestResponse<Request, Response>
-where
-    Request: Serialize,
-    Response: for<'a> Deserialize<'a>,
-{
-    /// Wrap a raw capability with the request-response API.
-    pub const fn new(cap: Capability) -> Self {
-        Self {
-            cap,
-            _request: PhantomData,
-            _response: PhantomData,
-        }
-    }
-
-    /// Perform a request on this capability.
-    ///
-    /// Fails if the capability is unavailable.
-    pub fn request(&self, request: Request, args: &[&Capability]) -> (Response, Vec<Capability>) {
-        let reply = Mailbox::new();
-        let reply_cap = reply.make_capability(Permissions::SEND);
-        reply.monitor(&self.cap);
-
-        let mut caps = Vec::with_capacity(args.len() + 1);
-        caps.push(&reply_cap);
-        caps.extend_from_slice(args);
-
-        self.cap.send_json(&request, caps.as_slice());
-
-        reply.recv_json()
-    }
-}
-
-/// A wrapper for capabilities implementing the [registry] protocol.
-pub type Registry = RequestResponse<registry::RegistryRequest, registry::RegistryResponse>;
-
-impl Registry {
-    /// Gets a service by its name. Returns `None` if the service doesn't exist.
-    pub fn get_service(&self, name: &str) -> Option<Capability> {
-        let request = registry::RegistryRequest::Get {
-            name: name.to_string(),
-        };
-
-        let (data, mut caps) = self.request(request, &[]);
-
-        let registry::RegistryResponse::Get(present) = data else {
-            panic!("failed to get service {:?}", name);
-        };
-
-        if present {
-            Some(caps.remove(0))
-        } else {
-            None
-        }
-    }
-}
-
-/// A capability to the registry that this process has base access to.
-pub static REGISTRY: Registry = RequestResponse::new(Capability(0));
-
-lazy_static::lazy_static! {
-    /// A lazily-initialized handle to the WebAssembly spawner service.
-    pub static ref WASM_SPAWNER: RequestResponse<wasm::WasmSpawnInfo, ()> = {
-        RequestResponse::new(REGISTRY.get_service("hearth.wasm.WasmProcessSpawner").unwrap())
-    };
 }
 
 /// An integer handle to a capability to a route.
@@ -151,20 +72,9 @@ impl Drop for Capability {
 }
 
 impl Capability {
-    /// Spawns a child process for the given function.
-    pub fn spawn(cb: fn(), registry: Option<Capability>) -> Self {
-        // directly transmute a Rust function pointer to a Wasm function index
-        let entrypoint = unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32;
-
-        let ((), mut caps) = WASM_SPAWNER.request(
-            wasm::WasmSpawnInfo {
-                lump: this_lump(),
-                entrypoint: Some(entrypoint),
-            },
-            &[registry.as_ref().unwrap_or(REGISTRY.as_ref())],
-        );
-
-        caps.remove(0)
+    /// Allow capabilities to be initialized from outside of this crate.
+    pub const unsafe fn new_raw(handle: u32) -> Self {
+        Capability(handle)
     }
 
     /// Sends a message to this capability.
@@ -474,6 +384,83 @@ mod abi {
             pub fn get_message_caps(handle: u32, dst_ptr: u32);
         }
     }
+}
+
+/// Exports this WebAssembly module's process metadata using the calling Cargo
+/// package's configuration.
+///
+/// Use this macro exactly once in the top level of a guest Wasm module's Rust
+/// crate.
+///
+/// Uses the following package settings as fields of the process metadata:
+/// - `name`: the name of the package.
+/// - `description`: a short description of the package's usage.
+/// - `authors`: a list of authors that have contributed to the package.
+/// - `repository`: a link to the home source repository of the package.
+/// - `homepage`: a link to the package's homepage.
+/// - `license`: an SPDX license identifier for the package's source code.
+///
+/// See [Cargo's documentation](https://doc.rust-lang.org/cargo/reference/manifest.html#the-package-section) for more info.
+#[macro_export]
+macro_rules! export_metadata {
+    () => {
+        #[no_mangle]
+        extern "C" fn _hearth_metadata() {
+            // define the ABI functions in the function since we only use them here
+            #[link(wasm_import_module = "hearth::metadata")]
+            extern "C" {
+                fn set_name(ptr: u32, len: u32);
+                fn set_description(ptr: u32, len: u32);
+                fn add_author(ptr: u32, len: u32);
+                fn set_repository(ptr: u32, len: u32);
+                fn set_homepage(ptr: u32, len: u32);
+                fn set_license(ptr: u32, len: u32);
+            }
+
+            // helper function to return Some(str) when str is not empty and None if empty
+            let some_or_empty = |str: &str| {
+                if str.is_empty() {
+                    None
+                } else {
+                    let bytes = str.as_bytes();
+                    let ptr = bytes.as_ptr() as u32;
+                    let len = bytes.len() as u32;
+                    Some((ptr, len))
+                }
+            };
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_NAME")) {
+                unsafe { set_name(ptr, len) };
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_DESCRIPTION")) {
+                unsafe { set_description(ptr, len) };
+            }
+
+            let authors = env!("CARGO_PKG_AUTHORS");
+            if !authors.is_empty() {
+                // authors are split by ':' characters in the environment variable
+                for author in authors.split(':') {
+                    let bytes = author.as_bytes();
+                    let ptr = bytes.as_ptr() as u32;
+                    let len = bytes.len() as u32;
+                    unsafe { add_author(ptr, len) };
+                }
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_REPOSITORY")) {
+                unsafe { set_repository(ptr, len) };
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_HOMEPAGE")) {
+                unsafe { set_homepage(ptr, len) };
+            }
+
+            if let Some((ptr, len)) = some_or_empty(env!("CARGO_PKG_LICENSE")) {
+                unsafe { set_license(ptr, len) };
+            }
+        }
+    };
 }
 
 #[no_mangle]

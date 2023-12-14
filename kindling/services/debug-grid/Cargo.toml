@@ -1,0 +1,16 @@
+[package]
+name = "kindling-debug-grid"
+version = "0.1.0"
+edition = "2021"
+description = "Provides a debug draw grid at the ground plane for testing"
+
+[package.metadata.service]
+name = "rs.hearth.kindling.DebugGrid"
+targets = []
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hearth-guest.workspace = true
+kindling-host.workspace = true

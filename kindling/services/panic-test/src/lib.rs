@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+hearth_guest::export_metadata!();
+
 // Currently just a stub for testing purposes
 #[no_mangle]
 pub extern "C" fn run() {

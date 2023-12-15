@@ -16,15 +16,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use hearth_guest::{window::*, *};
+use hearth_guest::window::WindowEvent;
+use kindling_host::prelude::*;
+
+hearth_guest::export_metadata!();
 
 #[no_mangle]
 pub extern "C" fn run() {
-    let window = REGISTRY.get_service(SERVICE_NAME).unwrap();
-    let events = Mailbox::new();
-    let events_cap = events.make_capability(Permissions::SEND);
-
-    window.send_json(&WindowCommand::Subscribe, &[&events_cap]);
+    let events = MAIN_WINDOW.subscribe();
 
     loop {
         let (msg, _) = events.recv_json::<WindowEvent>();
@@ -33,10 +32,6 @@ pub extern "C" fn run() {
             continue;
         }
 
-        log(
-            ProcessLogLevel::Info,
-            "window-test",
-            &format!("window event: {:?}", msg),
-        );
+        info!("window event: {:?}", msg);
     }
 }

@@ -20,9 +20,9 @@ use std::sync::Arc;
 
 use hearth_macros::impl_wasm_linker;
 use hearth_runtime::anyhow::{anyhow, bail, Context, Result};
-use hearth_runtime::asset::AssetLoader;
+use hearth_runtime::asset::{AssetLoader, AssetStore};
 use hearth_runtime::flue::{
-    CapabilityHandle, Mailbox, MailboxGroup, Permissions, Table, TableSignal,
+    CapabilityHandle, CapabilityRef, Mailbox, MailboxGroup, Permissions, Table, TableSignal,
 };
 use hearth_runtime::lump::{bytes::Bytes, LumpStoreImpl};
 use hearth_runtime::process::{Process, ProcessLogEvent, ProcessMetadata};
@@ -32,14 +32,23 @@ use hearth_runtime::{cargo_process_metadata, tokio, utils::*};
 use hearth_schema::wasm::WasmSpawnInfo;
 use hearth_schema::{LumpId, SignalKind};
 use slab::Slab;
-use tracing::{debug, error};
-use wasmtime::{Caller, Config, Engine, Linker, Module, Store, UpdateDeadline};
+use tracing::{error, warn};
+use wasmtime::{Caller, Config, Engine, Instance, Linker, Module, Store, UpdateDeadline};
+
+/// An interface to attempt to acquire a Wasm ABI by type.
+pub trait GetAbi<T>
+where
+    T: Sized,
+{
+    /// Attempt to get a mutable reference to an ABI in this process data.
+    fn get_abi(&mut self) -> Result<&mut T>;
+}
 
 /// An interface for Wasm ABIs: host-side data exposed to WebAssembly through a
 /// set of linked host functions.
 ///
 /// Implemented by the [impl_wasm_linker] proc macro.
-pub trait WasmLinker<T: AsMut<Self>> {
+pub trait WasmLinker<T: GetAbi<Self>>: Sized {
     /// Add this ABI's functions to the given Linker.
     fn add_to_linker(linker: &mut Linker<T>);
 }
@@ -655,19 +664,122 @@ impl MailboxAbi {
     }
 }
 
-/// Encapsulates an instance of each guest ABI data structure.
-pub struct ProcessData {
-    pub log: LogAbi,
-    pub lump: LumpAbi,
-    pub table: TableAbi,
-    pub mailbox: MailboxAbi,
+/// Implements the `hearth::metadata` ABI module.
+///
+/// This ABI is only available during the metadata stage of process execution.
+/// Its role is to write each field of [ProcessMetadata] before the process is
+/// actually spawned with access to the full runtime. Each method modifies a
+/// given field of [ProcessMetadata].
+#[derive(Default)]
+pub struct MetadataAbi {
+    meta: ProcessMetadata,
 }
 
+#[impl_wasm_linker(module = "hearth::metadata")]
+impl MetadataAbi {
+    fn set_name(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.name = Some(str.to_string());
+        Ok(())
+    }
+
+    fn set_description(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.description = Some(str.to_string());
+        Ok(())
+    }
+
+    fn add_author(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+
+        self.meta
+            .authors
+            .get_or_insert(Default::default())
+            .push(str.to_string());
+
+        Ok(())
+    }
+
+    fn set_repository(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.repository = Some(str.to_string());
+        Ok(())
+    }
+
+    fn set_homepage(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.homepage = Some(str.to_string());
+        Ok(())
+    }
+
+    fn set_license(&mut self, memory: GuestMemory<'_>, ptr: u32, len: u32) -> Result<()> {
+        let str = memory.get_str(ptr, len)?;
+        self.meta.license = Some(str.to_string());
+        Ok(())
+    }
+}
+
+/// Encapsulates an instance of each guest ABI data structure.
+///
+/// Each variant is only accessible during a specific phase of a process's
+/// execution. If a process attempts to access an ABI that isn't available in
+/// its phase, the [GetAbi] implementation for that ABI will throw an error.
+pub enum ProcessData {
+    /// The **metadata phase** of process execution.
+    ///
+    /// Before the process is spawned into the runtime, it may export
+    /// user-facing metadata through [MetadataAbi].
+    Metadata { metadata: MetadataAbi },
+
+    /// The **running phase** of process execution.
+    ///
+    /// Provides full access to a process's ABIs post-spawn.
+    Running {
+        log: LogAbi,
+        lump: LumpAbi,
+        table: TableAbi,
+        mailbox: MailboxAbi,
+    },
+}
+
+impl GetAbi<MetadataAbi> for ProcessData {
+    fn get_abi(&mut self) -> Result<&mut MetadataAbi> {
+        match self {
+            Self::Running { .. } => bail!("process is running"),
+            Self::Metadata { metadata } => Ok(metadata),
+        }
+    }
+}
+
+macro_rules! impl_running_get_abi {
+    ($ty: ident, $sub_ty: ident, $sub_field: ident) => {
+        impl GetAbi<$sub_ty> for $ty {
+            fn get_abi(&mut self) -> Result<&mut $sub_ty> {
+                match self {
+                    Self::Metadata { .. } => bail!("process is not running"),
+                    Self::Running { $sub_field, .. } => Ok($sub_field),
+                }
+            }
+        }
+    };
+}
+
+impl_running_get_abi!(ProcessData, LogAbi, log);
+impl_running_get_abi!(ProcessData, LumpAbi, lump);
+impl_running_get_abi!(ProcessData, TableAbi, table);
+impl_running_get_abi!(ProcessData, MailboxAbi, mailbox);
+
 impl ProcessData {
-    pub fn new(runtime: &Runtime, process: Process, this_lump: LumpId) -> Self {
+    pub fn new_metadata() -> Self {
+        Self::Metadata {
+            metadata: Default::default(),
+        }
+    }
+
+    pub fn new_running(runtime: &Runtime, process: Process, this_lump: LumpId) -> Self {
         let process = Arc::new(process);
 
-        Self {
+        Self::Running {
             log: LogAbi {
                 process: process.clone(),
             },
@@ -681,48 +793,107 @@ impl ProcessData {
             }),
         }
     }
-}
 
-macro_rules! impl_asmut {
-    ($ty: ident, $sub_ty: ident, $sub_field: ident) => {
-        impl ::std::convert::AsMut<$sub_ty> for $ty {
-            fn as_mut(&mut self) -> &mut $sub_ty {
-                &mut self.$sub_field
-            }
-        }
-    };
-}
-
-impl_asmut!(ProcessData, LogAbi, log);
-impl_asmut!(ProcessData, LumpAbi, lump);
-impl_asmut!(ProcessData, TableAbi, table);
-impl_asmut!(ProcessData, MailboxAbi, mailbox);
-
-impl ProcessData {
     /// Adds all module ABIs to the given linker.
     pub fn add_to_linker(linker: &mut Linker<Self>) {
         LogAbi::add_to_linker(linker);
         LumpAbi::add_to_linker(linker);
         TableAbi::add_to_linker(linker);
         MailboxAbi::add_to_linker(linker);
+        MetadataAbi::add_to_linker(linker);
     }
 }
 
 struct WasmProcess {
-    engine: Arc<Engine>,
-    linker: Arc<Linker<ProcessData>>,
-    module: Arc<Module>,
+    store: Store<ProcessData>,
+    exports_metadata: bool,
+    instance: Instance,
     this_lump: LumpId,
-    entrypoint: Option<u32>,
 }
 
 impl WasmProcess {
+    pub async fn new(
+        engine: &Engine,
+        linker: &Linker<ProcessData>,
+        module: &Module,
+        this_lump: LumpId,
+    ) -> Result<Self> {
+        let data = ProcessData::new_metadata();
+        let mut store = Store::new(engine, data);
+
+        let instance = linker
+            .instantiate_async(&mut store, module)
+            .await
+            .context("instantiating Wasm instance")?;
+
+        Ok(Self {
+            store,
+            exports_metadata: false,
+            instance,
+            this_lump,
+        })
+    }
+
+    /// Executes the process's `_hearth_metadata` function and returns the
+    /// result.
+    pub async fn get_metadata(&mut self) -> Result<ProcessMetadata> {
+        // while retrieving the process metadata, preemptively timeslice
+        self.store.epoch_deadline_async_yield_and_update(1);
+
+        // attempt to locate the `_hearth_metadata` export
+        if let Ok(cb) = self
+            .instance
+            .get_typed_func(&mut self.store, "_hearth_metadata")
+        {
+            // attempt to call it
+            cb.call_async(&mut self.store, ())
+                .await
+                .context("calling Wasm metadata function")?;
+
+            // signal that the metadata was exported
+            self.exports_metadata = true;
+        }
+
+        // retrieve the written metadata from the store's process data
+        let ProcessData::Metadata { metadata } = self.store.data() else {
+            bail!("process metadata unavailable");
+        };
+
+        Ok(metadata.meta.to_owned())
+    }
+
     /// Executes a Wasm process.
-    async fn run(mut self, runtime: Arc<Runtime>, ctx: Process) {
+    async fn run(mut self, runtime: Arc<Runtime>, ctx: Process, entrypoint: Option<u32>) {
+        // grab the PID for logging
         let pid = ctx.borrow_info().pid;
 
+        // log a warning if this process did not export its metadata
+        if !self.exports_metadata {
+            warn!(
+                "Wasm guest with PID {} did not export its process metadata",
+                pid
+            );
+        }
+
+        // switch the process ABIs to running
+        *self.store.data_mut() = ProcessData::new_running(runtime.as_ref(), ctx, self.this_lump);
+
+        // while executing the main function, preemptively timeslice until killed
+        self.store.epoch_deadline_callback(move |store| {
+            let ProcessData::Running { table, .. } = store.data() else {
+                bail!("process is not running");
+            };
+
+            if table.process.borrow_group().poll_dead() {
+                bail!("process killed");
+            }
+
+            Ok(UpdateDeadline::Yield(1))
+        });
+
+        // call inner execution behavior and handle its errors
         match self
-            .run_inner(runtime, ctx)
+            .run_inner(entrypoint)
             .await
             .with_context(|| format!("PID {}", pid))
         {
@@ -734,47 +905,46 @@ impl WasmProcess {
     }
 
     /// Performs the actual process execution using easy error handling.
-    async fn run_inner(&mut self, runtime: Arc<Runtime>, ctx: Process) -> Result<()> {
-        // TODO log using the process log instead of tracing?
-        let data = ProcessData::new(runtime.as_ref(), ctx, self.this_lump);
-        let mut store = Store::new(&self.engine, data);
-
-        store.epoch_deadline_callback(move |store| {
-            if store.data().table.process.borrow_group().poll_dead() {
-                bail!("process killed");
-            }
-
-            Ok(UpdateDeadline::Yield(1))
-        });
-
-        let instance = self
-            .linker
-            .instantiate_async(&mut store, &self.module)
-            .await
-            .context("instantiating Wasm instance")?;
-
-        let init = instance.get_typed_func::<(), ()>(&mut store, "_hearth_init");
-        if let Ok(init) = init {
-            init.call_async(&mut store, ())
+    async fn run_inner(&mut self, entrypoint: Option<u32>) -> Result<()> {
+        // run the `_hearth_init` export, if available
+        if let Ok(init) = self
+            .instance
+            .get_typed_func(&mut self.store, "_hearth_init")
+        {
+            init.call_async(&mut self.store, ())
                 .await
                 .context("calling Wasm init function")?;
         }
 
-        if let Some(entrypoint) = self.entrypoint {
-            let cb = instance
-                .get_typed_func::<u32, ()>(&mut store, "_hearth_spawn_by_index")
-                .context("lookup _hearth_spawn_by_index")?;
-            cb.call_async(&mut store, entrypoint)
-                .await
-                .context("calling Wasm entrypoint")?;
-        } else {
-            let cb = instance.get_typed_func::<(), ()>(&mut store, "run")?;
-            cb.call_async(&mut store, ())
-                .await
-                .context("calling Wasm run()")?;
-        }
+        // switch on which entrypoint function to call
+        match entrypoint {
+            // no entrypoint index given
+            None => {
+                // retrieve the `run` export
+                let cb = self
+                    .instance
+                    .get_typed_func(&mut self.store, "run")
+                    .context("lookup run")?;
 
-        Ok(())
+                // execute it
+                cb.call_async(&mut self.store, ())
+                    .await
+                    .context("calling Wasm run()")
+            }
+            // execute a specific entrypoint by index
+            Some(entrypoint) => {
+                // retrieve the `_hearth_spawn_by_index` export
+                let cb = self
+                    .instance
+                    .get_typed_func(&mut self.store, "_hearth_spawn_by_index")
+                    .context("lookup _hearth_spawn_by_index")?;
+
+                // call it with the specified entrypoint index
+                cb.call_async(&mut self.store, entrypoint)
+                    .await
+                    .context("calling Wasm entrypoint")
+            }
+        }
     }
 }
 
@@ -792,53 +962,17 @@ impl RequestResponseProcess for WasmProcessSpawner {
         &'a mut self,
         request: &mut RequestInfo<'a, WasmSpawnInfo>,
     ) -> ResponseInfo<'a, Self::Response> {
-        let module = request
-            .runtime
-            .asset_store
-            .load_asset::<WasmModuleLoader>(&request.data.lump)
-            .await
-            .context("loading Wasm module");
-
-        let module = match module {
-            Ok(module) => module,
-            Err(err) => {
-                error!("failed to load Wasm module: {:?}", err);
-                return ().into();
-            }
-        };
-
-        debug!("Spawning module {}", request.data.lump);
-        let meta = ProcessMetadata::default();
-        let child = request.runtime.process_factory.spawn(meta);
-
-        let child_cap = child
-            .borrow_parent()
-            .export_to(Permissions::all(), request.process.borrow_table())
-            .unwrap();
-
-        // send initial capabilities
-        child_cap
-            .send(&[], request.cap_args.iter().collect::<Vec<_>>().as_slice())
-            .await
-            .unwrap();
-
-        // flush initial capabilities
-        child.borrow_parent().recv(|_| ()).await.unwrap();
-
-        let process = WasmProcess {
-            engine: self.engine.clone(),
-            linker: self.linker.clone(),
-            module,
-            entrypoint: request.data.entrypoint,
-            this_lump: request.data.lump,
-        };
-
-        let runtime = request.runtime.clone();
-        tokio::spawn(process.run(runtime, child));
-
         ResponseInfo {
             data: (),
-            caps: vec![child_cap],
+            caps: match self.spawn(request).await {
+                // spawned successfully; return cap
+                Ok(child) => vec![child],
+                // error occurred. log and no cap
+                Err(err) => {
+                    error!("Wasm spawning error: {:?}", err);
+                    vec![]
+                }
+            },
         }
     }
 }
@@ -855,6 +989,57 @@ impl ServiceRunner for WasmProcessSpawner {
     }
 }
 
+impl WasmProcessSpawner {
+    pub async fn spawn<'a>(
+        &'a mut self,
+        request: &mut RequestInfo<'a, WasmSpawnInfo>,
+    ) -> Result<CapabilityRef<'a>> {
+        // load the WebAssembly module from the asset store
+        let module = request
+            .runtime
+            .asset_store
+            .load_asset::<WasmModuleLoader>(&request.data.lump)
+            .await
+            .context("loading Wasm module")?;
+
+        // instantiate a new WasmProcess
+        let mut process = WasmProcess::new(&self.engine, &self.linker, &module, request.data.lump)
+            .await
+            .context("initializing process")?;
+
+        // retrieve the process's metadata
+        let meta = process
+            .get_metadata()
+            .await
+            .context("retrieving process metadata")?;
+
+        // spawn a new local process
+        let child = request.runtime.process_factory.spawn(meta);
+
+        // import a capability to its parent mailbox
+        let child_cap = child
+            .borrow_parent()
+            .export_to(Permissions::all(), request.process.borrow_table())
+            .unwrap();
+
+        // send the child the initial capabilities from the request
+        child_cap
+            .send(&[], request.cap_args.iter().collect::<Vec<_>>().as_slice())
+            .await
+            .unwrap();
+
+        // flush the child's mailbox to import the initial capabilities
+        child.borrow_parent().recv(|_| ()).await.unwrap();
+
+        // run the process
+        let runtime = request.runtime.clone();
+        tokio::spawn(process.run(runtime, child, request.data.entrypoint));
+
+        // return the child's cap
+        Ok(child_cap)
+    }
+}
+
 pub struct WasmModuleLoader {
     engine: Arc<Engine>,
 }
@@ -863,7 +1048,7 @@ pub struct WasmModuleLoader {
 impl AssetLoader for WasmModuleLoader {
     type Asset = Module;
 
-    async fn load_asset(&self, data: &[u8]) -> Result<Module> {
+    async fn load_asset(&self, _store: &AssetStore, data: &[u8]) -> Result<Module> {
         Module::new(&self.engine, data)
     }
 }

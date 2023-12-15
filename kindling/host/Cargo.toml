@@ -1,0 +1,11 @@
+[package]
+name = "kindling-host"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+glam = "0.20"
+hearth-guest.workspace = true
+lazy_static.workspace = true
+serde.workspace = true

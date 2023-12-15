@@ -1,0 +1,18 @@
+[package]
+name = "kindling-skybox"
+version = "0.1.0"
+edition = "2021"
+description = "Sets the skybox to a hardcoded cube texture"
+
+[package.metadata.service]
+name = "rs.hearth.kindling.Skybox"
+targets = []
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hearth-guest.workspace = true
+image = { version = "0.24", default-features = false, features = ["png"] }
+kindling-host.workspace = true
+serde_json = "1"

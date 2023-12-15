@@ -20,7 +20,7 @@
 
 #![warn(missing_docs)]
 
-use std::{borrow::Borrow, marker::PhantomData};
+use std::borrow::Borrow;
 
 use serde::{Deserialize, Serialize};
 
@@ -40,85 +40,6 @@ pub fn this_lump() -> LumpId {
     let mut id = LumpId(Default::default());
     unsafe { abi::lump::this_lump(&mut id as *const LumpId as u32) }
     id
-}
-
-/// A helper struct for request-response capabilities.
-pub struct RequestResponse<Request, Response> {
-    cap: Capability,
-    _request: PhantomData<Request>,
-    _response: PhantomData<Response>,
-}
-
-impl<Request, Response> AsRef<Capability> for RequestResponse<Request, Response> {
-    fn as_ref(&self) -> &Capability {
-        &self.cap
-    }
-}
-
-impl<Request, Response> RequestResponse<Request, Response>
-where
-    Request: Serialize,
-    Response: for<'a> Deserialize<'a>,
-{
-    /// Wrap a raw capability with the request-response API.
-    pub const fn new(cap: Capability) -> Self {
-        Self {
-            cap,
-            _request: PhantomData,
-            _response: PhantomData,
-        }
-    }
-
-    /// Perform a request on this capability.
-    ///
-    /// Fails if the capability is unavailable.
-    pub fn request(&self, request: Request, args: &[&Capability]) -> (Response, Vec<Capability>) {
-        let reply = Mailbox::new();
-        let reply_cap = reply.make_capability(Permissions::SEND);
-        reply.monitor(&self.cap);
-
-        let mut caps = Vec::with_capacity(args.len() + 1);
-        caps.push(&reply_cap);
-        caps.extend_from_slice(args);
-
-        self.cap.send_json(&request, caps.as_slice());
-
-        reply.recv_json()
-    }
-}
-
-/// A wrapper for capabilities implementing the [registry] protocol.
-pub type Registry = RequestResponse<registry::RegistryRequest, registry::RegistryResponse>;
-
-impl Registry {
-    /// Gets a service by its name. Returns `None` if the service doesn't exist.
-    pub fn get_service(&self, name: &str) -> Option<Capability> {
-        let request = registry::RegistryRequest::Get {
-            name: name.to_string(),
-        };
-
-        let (data, mut caps) = self.request(request, &[]);
-
-        let registry::RegistryResponse::Get(present) = data else {
-            panic!("failed to get service {:?}", name);
-        };
-
-        if present {
-            Some(caps.remove(0))
-        } else {
-            None
-        }
-    }
-}
-
-/// A capability to the registry that this process has base access to.
-pub static REGISTRY: Registry = RequestResponse::new(Capability(0));
-
-lazy_static::lazy_static! {
-    /// A lazily-initialized handle to the WebAssembly spawner service.
-    pub static ref WASM_SPAWNER: RequestResponse<wasm::WasmSpawnInfo, ()> = {
-        RequestResponse::new(REGISTRY.get_service("hearth.wasm.WasmProcessSpawner").unwrap())
-    };
 }
 
 /// An integer handle to a capability to a route.
@@ -151,20 +72,9 @@ impl Drop for Capability {
 }
 
 impl Capability {
-    /// Spawns a child process for the given function.
-    pub fn spawn(cb: fn(), registry: Option<Capability>) -> Self {
-        // directly transmute a Rust function pointer to a Wasm function index
-        let entrypoint = unsafe { std::mem::transmute::<fn(), usize>(cb) } as u32;
-
-        let ((), mut caps) = WASM_SPAWNER.request(
-            wasm::WasmSpawnInfo {
-                lump: this_lump(),
-                entrypoint: Some(entrypoint),
-            },
-            &[registry.as_ref().unwrap_or(REGISTRY.as_ref())],
-        );
-
-        caps.remove(0)
+    /// Allow capabilities to be initialized from outside of this crate.
+    pub const unsafe fn new_raw(handle: u32) -> Self {
+        Capability(handle)
     }
 
     /// Sends a message to this capability.

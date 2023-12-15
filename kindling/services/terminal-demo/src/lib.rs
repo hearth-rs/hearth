@@ -18,22 +18,16 @@
 
 use std::collections::HashMap;
 
-use hearth_guest::{terminal::*, *};
+use hearth_guest::{terminal::TerminalState, Color};
+use kindling_host::prelude::{
+    glam::{vec3, Mat4, Vec3},
+    *,
+};
 
-export_metadata!();
-
-/// Type alias for the native terminal factory service.
-pub type TerminalFactory = RequestResponse<FactoryRequest, FactoryResponse>;
+hearth_guest::export_metadata!();
 
 #[no_mangle]
 pub extern "C" fn run() {
-    // retrieve the native terminal factory service and wrap it in TerminalFactory
-    let terminal_factory = TerminalFactory::new(
-        REGISTRY
-            .get_service("hearth.terminal.TerminalFactory")
-            .expect("terminal factory service unavailable"),
-    );
-
     // create a list of each terminal to spawn
     let terminal_configs = [
         (0, 0, Palette::rose_pine()),
@@ -43,62 +37,33 @@ pub extern "C" fn run() {
     ];
 
     // spawn each terminal using the terminal factory and a select palette
-    let terms = terminal_configs
-        .into_iter()
-        .map(|(x, y, palette)| spawn_terminal(&terminal_factory, x, y, palette));
+    let terms = terminal_configs.into_iter().map(|(x, y, palette)| {
+        Terminal::new(TerminalState {
+            position: (x as f32 * 2.8 - 1.4, y as f32 * 2.8 - 1.4, 0.0).into(),
+            orientation: Default::default(),
+            half_size: (1.25, 1.25).into(),
+            opacity: 1.0,
+            padding: Default::default(),
+            units_per_em: 0.06,
+            colors: palette.to_ansi(),
+        })
+    });
 
-    // hacky way to wait for each terminal's shell to start up so that the
-    // pipes command is actually processed by it once entered
-    //
-    // Hearth guests do not have an API for sleeping for fixed periods of time,
-    // so we do an expensive operation over and over to sleep
-    for _ in 0..10_000 {
-        let _ = REGISTRY
-            .get_service("hearth.terminal.TerminalFactory")
-            .unwrap();
-    }
+    sleep(0.5);
 
     // enter and execute the pipes command in each terminal
     for term in terms {
-        term.send_json(&TerminalUpdate::Input("pipes\n".into()), &[]);
+        term.input("pipes\n".into());
+
+        // forget the terminals so that they dont drop when this function exits
+        std::mem::forget(term);
     }
-}
 
-/// Helper function to spawn a terminal at a position on a grid with a given
-/// palette. Returns a capability to the new terminal instance.
-fn spawn_terminal(
-    terminal_factory: &TerminalFactory,
-    x: i32,
-    y: i32,
-    palette: Palette,
-) -> Capability {
-    // spawn a terminal
-    let request = FactoryRequest::CreateTerminal(TerminalState {
-        // reasonable translation on a grid
-        position: (x as f32 * 2.8 - 1.4, y as f32 * 2.8 - 1.4, 0.0).into(),
-        // face the default direction: towards the positive Z axis
-        orientation: Default::default(),
-        // size the terminals with margins
-        half_size: (1.25, 1.25).into(),
-        opacity: 1.0,
-        // no padding
-        padding: Default::default(),
-        // 6cm per glyph em
-        units_per_em: 0.06,
-        // given palette
-        colors: palette.to_ansi(),
-    });
-
-    // send the spawn request and receive the response and the new terminal
-    let (msg, caps) = terminal_factory.request(request, &[]);
-
-    // assert that the request succeeded
-    let _ = msg.unwrap();
-
-    // get a handle to the terminal returned by the spawn response
-    caps.get(0)
-        .expect("terminal factory did not respond with terminal capability")
-        .to_owned()
+    MAIN_WINDOW.set_camera(
+        90.0,
+        0.01,
+        Mat4::look_at_rh(vec3(0.3, 0.3, 3.0), Vec3::ZERO, Vec3::Y),
+    );
 }
 
 /// Helper struct for containing and identifying terminal colors.

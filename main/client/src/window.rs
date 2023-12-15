@@ -22,7 +22,7 @@ use glam::{dvec2, uvec2, Mat4};
 use hearth_rend3::{
     rend3::{
         self,
-        types::{Camera, CameraProjection, DirectionalLight, ResourceHandle},
+        types::{Camera, CameraProjection},
     },
     wgpu, FrameRequest, Rend3Plugin,
 };
@@ -121,9 +121,6 @@ struct Window {
 
     /// Tracks the last redraw to this window.
     last_redraw: Instant,
-
-    /// A dummy handle to keep a hard-coded directional light alive in the scene.
-    _directional_handle: ResourceHandle<DirectionalLight>,
 }
 
 impl Window {
@@ -151,17 +148,8 @@ impl Window {
         surface.configure(&iad.device, &config);
         let (outgoing_tx, outgoing_rx) = mpsc::unbounded_channel();
         let rend3_plugin = Rend3Plugin::new(iad.to_owned(), swapchain_format);
-        let renderer = rend3_plugin.renderer.to_owned();
         let frame_request_tx = rend3_plugin.frame_request_tx.clone();
-
         let (events_tx, events_rx) = mpsc::unbounded_channel();
-
-        let directional_handle = renderer.add_directional_light(DirectionalLight {
-            color: glam::Vec3::ONE,
-            intensity: 10.0,
-            direction: glam::Vec3::new(-1.0, -4.0, 2.0),
-            distance: 400.0,
-        });
 
         let window = Self {
             outgoing_tx,
@@ -173,7 +161,6 @@ impl Window {
             frame_request_tx,
             events_tx,
             last_redraw: Instant::now(),
-            _directional_handle: directional_handle,
         };
 
         let window_plugin = WindowPlugin {

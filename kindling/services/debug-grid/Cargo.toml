@@ -1,11 +1,11 @@
 [package]
-name = "kindling-window-test"
+name = "kindling-debug-grid"
 version = "0.1.0"
 edition = "2021"
-description = "A test of Hearth's window input."
+description = "Provides a debug draw grid at the ground plane for testing"
 
 [package.metadata.service]
-name = "rs.hearth.kindling.WindowTest"
+name = "rs.hearth.kindling.DebugGrid"
 targets = []
 
 [lib]

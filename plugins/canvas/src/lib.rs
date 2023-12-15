@@ -348,7 +348,7 @@ impl CanvasRoutine {
             },
             depth_stencil: Some(DepthStencilState {
                 format: TextureFormat::Depth32Float,
-                depth_write_enabled: false,
+                depth_write_enabled: true,
                 depth_compare: CompareFunction::GreaterEqual,
                 stencil: Default::default(),
                 bias: Default::default(),

@@ -1,0 +1,10 @@
+[package]
+name = "hearth-depgraph"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+anyhow = "1"
+cargo_metadata = "0.15"
+petgraph = "0.6"

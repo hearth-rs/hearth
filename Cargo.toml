@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["core/*", "kindling/build", "main/*", "plugins/*"]
+members = ["core/*", "kindling/build", "main/*", "plugins/*", "tools/*"]
 
 [workspace.dependencies]
 bytemuck = { version = "1.13", features = ["derive"] }
 flume = "0.11"
-glam = { version = "0.20", features = ["serde"] }
+glam = { version = "0.20", features = ["bytemuck", "serde"] }
 hearth-canvas.path = "plugins/canvas"
 hearth-daemon.path = "plugins/daemon"
 hearth-debug-draw.path = "plugins/debug-draw"
@@ -15,6 +15,7 @@ hearth-fs.path = "plugins/fs"
 hearth-macros.path = "core/macros"
 hearth-network.path = "plugins/network"
 hearth-rend3.path = "plugins/rend3"
+hearth-renderer.path = "plugins/renderer"
 hearth-runtime.path = "core/runtime"
 hearth-schema.path = "core/schema"
 hearth-terminal.path = "plugins/terminal"

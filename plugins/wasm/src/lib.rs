@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use hearth_macros::impl_wasm_linker;
 use hearth_runtime::anyhow::{anyhow, bail, Context, Result};
-use hearth_runtime::asset::AssetLoader;
+use hearth_runtime::asset::{AssetLoader, AssetStore};
 use hearth_runtime::flue::{
     CapabilityHandle, CapabilityRef, Mailbox, MailboxGroup, Permissions, Table, TableSignal,
 };
@@ -1048,7 +1048,7 @@ pub struct WasmModuleLoader {
 impl AssetLoader for WasmModuleLoader {
     type Asset = Module;
 
-    async fn load_asset(&self, data: &[u8]) -> Result<Module> {
+    async fn load_asset(&self, _store: &AssetStore, data: &[u8]) -> Result<Module> {
         Module::new(&self.engine, data)
     }
 }

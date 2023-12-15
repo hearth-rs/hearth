@@ -21,11 +21,12 @@ use std::sync::Arc;
 use glam::{UVec2, Vec4};
 use hearth_runtime::runtime::{Plugin, RuntimeBuilder};
 use rend3::graph::{ReadyData, RenderGraph};
-use rend3::types::{Camera, SampleCount};
+use rend3::types::{Camera, SampleCount, TextureHandle};
 use rend3::util::output::OutputFrame;
 use rend3::{InstanceAdapterDevice, Renderer};
 use rend3_routine::base::{BaseRenderGraph, BaseRenderGraphIntermediateState};
 use rend3_routine::pbr::PbrRoutine;
+use rend3_routine::skybox::SkyboxRoutine;
 use rend3_routine::tonemapping::TonemappingRoutine;
 use tokio::sync::{mpsc, oneshot};
 use wgpu::TextureFormat;
@@ -68,6 +69,15 @@ pub struct FrameRequest {
     pub on_complete: oneshot::Sender<()>,
 }
 
+/// An update to the global rend3 state.
+pub enum Rend3Command {
+    /// Updates the skybox.
+    SetSkybox(TextureHandle),
+
+    /// Updates the ambient lighting.
+    SetAmbient(Vec4),
+}
+
 /// A rend3 Hearth plugin for adding 3D rendering to a Hearth runtime.
 ///
 /// This plugin can be acquired by other plugins during runtime building to add
@@ -79,8 +89,13 @@ pub struct Rend3Plugin {
     pub base_render_graph: BaseRenderGraph,
     pub pbr_routine: PbrRoutine,
     pub tonemapping_routine: TonemappingRoutine,
+    pub skybox_routine: SkyboxRoutine,
+    pub ambient: Vec4,
     pub frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
+    pub command_tx: mpsc::UnboundedSender<Rend3Command>,
+    new_skybox: Option<TextureHandle>,
     frame_request_rx: mpsc::UnboundedReceiver<FrameRequest>,
+    command_rx: mpsc::UnboundedReceiver<Rend3Command>,
     routines: Vec<Box<dyn Routine>>,
 }
 
@@ -88,6 +103,7 @@ impl Plugin for Rend3Plugin {
     fn finalize(mut self, _builder: &mut RuntimeBuilder) {
         tokio::spawn(async move {
             while let Some(frame) = self.frame_request_rx.recv().await {
+                self.flush_commands();
                 self.draw(frame);
             }
         });
@@ -105,9 +121,11 @@ impl Rend3Plugin {
         let interfaces = &base_render_graph.interfaces;
         let pbr_routine = PbrRoutine::new(&renderer, &mut data_core, interfaces);
         let tonemapping_routine = TonemappingRoutine::new(&renderer, interfaces, surface_format);
+        let skybox_routine = SkyboxRoutine::new(&renderer, interfaces);
         drop(data_core);
 
         let (frame_request_tx, frame_request_rx) = mpsc::unbounded_channel();
+        let (command_tx, command_rx) = mpsc::unbounded_channel();
 
         Self {
             iad,
@@ -116,8 +134,13 @@ impl Rend3Plugin {
             base_render_graph,
             pbr_routine,
             tonemapping_routine,
+            skybox_routine,
             frame_request_tx,
             frame_request_rx,
+            command_tx,
+            command_rx,
+            new_skybox: None,
+            ambient: Vec4::ZERO,
             routines: Vec::new(),
         }
     }
@@ -127,9 +150,29 @@ impl Rend3Plugin {
         self.routines.push(Box::new(routine));
     }
 
+    /// Flushes and applies all [Rend3Command] messages.
+    pub fn flush_commands(&mut self) {
+        while let Ok(command) = self.command_rx.try_recv() {
+            use Rend3Command::*;
+            match command {
+                SetSkybox(texture) => {
+                    self.new_skybox = Some(texture);
+                }
+                SetAmbient(ambient) => {
+                    self.ambient = ambient;
+                }
+            }
+        }
+    }
+
     /// Draws a frame in response to a [FrameRequest].
     pub fn draw(&mut self, request: FrameRequest) {
         let (cmd_bufs, ready) = self.renderer.ready();
+
+        if let Some(skybox) = self.new_skybox.take() {
+            self.skybox_routine.set_background_texture(Some(skybox));
+            self.skybox_routine.ready(&self.renderer);
+        }
 
         let aspect = request.resolution.as_vec2();
         let aspect = aspect.x / aspect.y;
@@ -146,9 +189,9 @@ impl Rend3Plugin {
         let graph = &mut graph_data;
         let samples = SampleCount::One;
         let base = &self.base_render_graph;
-        let ambient = Vec4::ZERO;
+        let ambient = self.ambient;
         let pbr = &self.pbr_routine;
-        let skybox = None;
+        let skybox = Some(&self.skybox_routine);
 
         // see implementation of BaseRenderGraph::add_to_graph() for details
         // on what the following code is based on

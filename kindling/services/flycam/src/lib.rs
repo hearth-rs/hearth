@@ -18,10 +18,13 @@
 
 use std::{collections::HashMap, f32::consts::FRAC_PI_2};
 
-use glam::{vec3, EulerRot, Mat4, Quat, Vec3};
 use hearth_guest::{
-    debug_draw::{DebugDrawMesh, DebugDrawUpdate, DebugDrawVertex},
+    debug_draw::{DebugDrawMesh, DebugDrawVertex},
     window::*,
+    Color,
+};
+use kindling_host::prelude::{
+    glam::{vec3, EulerRot, Mat4, Quat, Vec3},
     *,
 };
 use rapier3d::{geometry::ColliderSet, parry::query::Ray, pipeline::QueryPipeline, prelude::*};
@@ -42,35 +45,25 @@ impl PhysicsWorld {
     }
 }
 
-#[derive(Clone)]
 struct Cube {
     position: Vec3,
     radius: f32,
-    dd: Capability,
-}
-
-impl Into<Collider> for Cube {
-    fn into(self) -> Collider {
-        ColliderBuilder::cuboid(self.radius, self.radius, self.radius)
-            .position(self.position.to_array().into())
-            .build()
-    }
+    dd: DebugDraw,
 }
 
 impl Cube {
     pub fn new(position: Vec3) -> Self {
-        let dd_factory = RequestResponse::<(), ()>::new(
-            REGISTRY.get_service("hearth.DebugDrawFactory").unwrap(),
-        );
-
-        let (_, caps) = dd_factory.request((), &[]);
-        let dd = caps.get(0).unwrap().clone();
-
         Self {
             position,
             radius: 1.0,
-            dd,
+            dd: DebugDraw::new(),
         }
+    }
+
+    fn make_collider(&self) -> Collider {
+        ColliderBuilder::cuboid(self.radius, self.radius, self.radius)
+            .position(self.position.to_array().into())
+            .build()
     }
 
     pub fn draw(&self, color: Color) {
@@ -94,10 +87,7 @@ impl Cube {
             .flat_map(|limit| (limit..8).flat_map(move |idx| [limit, idx]))
             .collect();
 
-        self.dd.send_json(
-            &DebugDrawUpdate::Contents(DebugDrawMesh { vertices, indices }),
-            &[],
-        );
+        self.dd.update(DebugDrawMesh { vertices, indices })
     }
 }
 
@@ -122,7 +112,7 @@ impl CubeWorld {
 
         for position in positions {
             let cube = Cube::new(position);
-            let handle = physics.colliders.insert(cube.clone());
+            let handle = physics.colliders.insert(cube.make_collider());
             cubes.insert(handle, cube);
         }
 
@@ -176,15 +166,12 @@ impl CubeWorld {
 
 #[no_mangle]
 pub extern "C" fn run() {
-    let window = REGISTRY.get_service(SERVICE_NAME).unwrap();
-    let events = Mailbox::new();
-    let events_cap = events.make_capability(Permissions::SEND);
-    let mut flycam = Flycam::new(window.clone());
+    let events = MAIN_WINDOW.subscribe();
+    let mut flycam = Flycam::new();
     let mut cubes = CubeWorld::new();
 
-    window.send_json(&WindowCommand::Subscribe, &[&events_cap]);
-    window.send_json(&WindowCommand::SetCursorVisible(false), &[]);
-    window.send_json(&WindowCommand::SetCursorGrab(CursorGrabMode::Locked), &[]);
+    MAIN_WINDOW.hide_cursor();
+    MAIN_WINDOW.cursor_grab_mode(CursorGrabMode::Locked);
 
     loop {
         let (event, _) = events.recv_json::<WindowEvent>();
@@ -196,7 +183,6 @@ pub extern "C" fn run() {
 }
 
 struct Flycam {
-    window: Capability,
     keys: Keys,
     position: Vec3,
     pitch: f32,
@@ -204,9 +190,8 @@ struct Flycam {
 }
 
 impl Flycam {
-    pub fn new(window: Capability) -> Self {
+    pub fn new() -> Self {
         Self {
-            window,
             keys: Keys::empty(),
             position: Vec3::ZERO,
             pitch: 0.0,
@@ -260,14 +245,7 @@ impl Flycam {
                     self.position.y += dt * speed;
                 }
 
-                self.window.send_json(
-                    &WindowCommand::SetCamera {
-                        vfov: 90.0,
-                        near: 0.01,
-                        view,
-                    },
-                    &[],
-                );
+                MAIN_WINDOW.set_camera(90.0, 0.01, view);
             }
             WindowEvent::KeyboardInput {
                 input:

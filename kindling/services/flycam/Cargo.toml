@@ -13,6 +13,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 bitflags = "2.4.1"
-glam = "0.20"
+kindling-host.workspace = true
 hearth-guest.workspace = true
 rapier3d = "0.17"

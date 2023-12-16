@@ -18,11 +18,12 @@
 
 use std::sync::Arc;
 
-use glam::{vec2, Vec2, Vec3};
-use hearth_guest::{canvas::*, window::*, *};
+use hearth_guest::{canvas::*, window::*};
+use kindling_host::prelude::{
+    glam::{vec2, vec3, Vec2},
+    *,
+};
 use raqote::*;
-
-pub type CanvasFactory = RequestResponse<FactoryRequest, FactoryResponse>;
 
 static DRAW_OPTIONS: DrawOptions = DrawOptions {
     antialias: AntialiasMode::None,
@@ -30,31 +31,17 @@ static DRAW_OPTIONS: DrawOptions = DrawOptions {
     alpha: 1.,
 };
 
-/// A wrapper around the canvas Capability.
-struct CanvasWrapper {
-    canvas: Capability,
-}
-
-impl CanvasWrapper {
-    /// Send a new buffer of pixels to be drawn to the canvas.
-    fn update(&self, buffer: Pixels) {
-        self.canvas.send_json(&CanvasUpdate::Resize(buffer), &[]);
-    }
-
-    /// Send a new buffer to be drawn from a raqote DrawTarget.
-    fn update_with_draw_target(&self, dt: &DrawTarget) {
-        self.update(Pixels {
-            width: dt.width() as u32,
-            height: dt.height() as u32,
-            data: dt
-                .get_data_u8()
-                .chunks_exact(4)
-                .flat_map(|pix| [pix[2], pix[1], pix[0], pix[3]])
-                .collect(),
-        });
+fn dt_to_pixels(dt: &DrawTarget) -> Pixels {
+    Pixels {
+        width: dt.width() as u32,
+        height: dt.height() as u32,
+        data: dt
+            .get_data_u8()
+            .chunks_exact(4)
+            .flat_map(|pix| [pix[2], pix[1], pix[0], pix[3]])
+            .collect(),
     }
 }
-
 pub struct Label {
     font: Arc<bdf::Font>,
     content: String,
@@ -239,27 +226,22 @@ fn source_from_rgb(r: u8, g: u8, b: u8) -> Source<'static> {
 
 #[no_mangle]
 pub extern "C" fn run() {
-    let canvas_factory = CanvasFactory::new(
-        REGISTRY
-            .get_service("hearth.canvas.CanvasFactory")
-            .expect("canvas factory service unavailable"),
-    );
+    let events = MAIN_WINDOW.subscribe();
+    MAIN_WINDOW.set_camera(90.0, 0.01, Default::default());
 
-    let window = REGISTRY.get_service(SERVICE_NAME).unwrap();
-    let events = Mailbox::new();
-    let events_cap = events.make_capability(Permissions::SEND);
-    window.send_json(&WindowCommand::Subscribe, &[&events_cap]);
-
-    window.send_json(
-        &WindowCommand::SetCamera {
-            vfov: 90.0,
-            near: 0.01,
-            view: Default::default(),
+    let canvas = Canvas::new(
+        Position {
+            origin: vec3(0.0, 0.0, -1.0),
+            orientation: Default::default(),
+            half_size: vec2(1.0, 1.0),
         },
-        &[],
+        Pixels {
+            width: 1,
+            height: 1,
+            data: vec![0xff; 4],
+        },
+        CanvasSamplingMode::Nearest,
     );
-
-    let canvas = spawn_canvas(&canvas_factory, CanvasSamplingMode::Nearest);
     let canvas_size = (200, 200);
     let mut dt = DrawTarget::new(canvas_size.0, canvas_size.1);
     let mut window_size = Vec2::new(10.0, 10.0);
@@ -351,35 +333,7 @@ pub extern "C" fn run() {
         dt.set_transform(&translate(label_x, slider_pos.y + 100.0));
         min.draw(&mut dt);
 
-        canvas.update_with_draw_target(&dt);
+        canvas.update(dt_to_pixels(&dt));
         redraw = false;
-    }
-}
-
-/// Spawns a new canvas 1 unit in front of the camera's default position
-fn spawn_canvas(canvas_factory: &CanvasFactory, sampling: CanvasSamplingMode) -> CanvasWrapper {
-    let position = Position {
-        origin: Vec3::new(0.0, 0.0, -1.0),
-        orientation: Default::default(),
-        half_size: Vec2::new(1.0, 1.0),
-    };
-
-    let request = FactoryRequest::CreateCanvas {
-        position: position.clone(),
-        pixels: Pixels {
-            width: 1,
-            height: 1,
-            data: vec![0xff; 4],
-        },
-        sampling,
-    };
-
-    let (msg, caps) = canvas_factory.request(request, &[]);
-    let _ = msg.unwrap();
-    CanvasWrapper {
-        canvas: caps
-            .get(0)
-            .expect("Canvas factory did not respond with Canvas capabulity")
-            .to_owned(),
     }
 }

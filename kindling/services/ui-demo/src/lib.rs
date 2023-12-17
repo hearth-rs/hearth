@@ -19,9 +19,12 @@
 use std::sync::Arc;
 
 use hearth_guest::{canvas::*, window::*};
-use kindling_host::prelude::{
-    glam::{vec2, vec3, Vec2},
-    *,
+use kindling_host::{
+    glam::{ivec2, uvec2, IVec2, UVec2},
+    prelude::{
+        glam::{vec2, vec3, Vec2},
+        *,
+    },
 };
 use raqote::*;
 
@@ -42,6 +45,168 @@ fn dt_to_pixels(dt: &DrawTarget) -> Pixels {
             .collect(),
     }
 }
+
+/// A set of constraints for the size of a widget.
+///
+/// See https://docs.flutter.dev/ui/layout/constraints for more info.
+pub struct Constraints {
+    /// The minimum available dimensions of the widget.
+    pub min: UVec2,
+
+    /// The maximum available dimensions of the widget.
+    pub max: UVec2,
+}
+
+/// An input event.
+#[derive(Copy, Clone, Debug)]
+pub enum InputEvent {
+    DragStart(IVec2),
+    DragEnd,
+    DragMove(IVec2),
+}
+
+impl InputEvent {
+    pub fn offset(self, offset: IVec2) -> Self {
+        use InputEvent::*;
+        match self {
+            DragStart(pos) => DragStart(pos + offset),
+            event => event,
+        }
+    }
+}
+
+pub trait Widget: 'static {
+    /// Propagates layout constraints to this widget and returns the new widget
+    /// size.
+    fn layout(&mut self, constraints: &Constraints) -> UVec2;
+
+    /// Draws this widget.
+    fn draw(&self) -> Pixels;
+
+    /// Processes an incoming input event.
+    fn on_input(&mut self, event: InputEvent);
+}
+
+/// A helper struct for managing [Widget] implementations in other widgets.
+///
+/// Caches data for reuse, such as the last rendered pixel buffer.
+pub struct Child {
+    /// The inner [Widget] implementation.
+    inner: Box<dyn Widget>,
+
+    /// The current position of this widget.
+    position: UVec2,
+}
+
+impl Child {
+    /// Initializes a child with position at (0, 0).
+    pub fn new(inner: impl Widget) -> Self {
+        Self {
+            inner: Box::new(inner),
+            position: UVec2::ZERO,
+        }
+    }
+
+    /// Draws this child within the draw target at this child's position.
+    pub fn draw(&self, dt: &mut DrawTarget) {
+        let pixels = self.inner.draw();
+
+        let image = Image {
+            width: pixels.width as i32,
+            height: pixels.height as i32,
+            data: unsafe { std::mem::transmute(pixels.data.as_slice()) },
+        };
+
+        dt.draw_image_at(
+            self.position.x as f32,
+            self.position.y as f32,
+            &image,
+            &DRAW_OPTIONS,
+        );
+    }
+}
+
+pub enum FlowDirection {
+    Horizontal,
+    Vertical,
+}
+
+pub struct Flow {
+    dir: FlowDirection,
+    size: UVec2,
+    children: Vec<Child>,
+}
+
+impl Widget for Flow {
+    fn layout(&mut self, constraints: &Constraints) -> UVec2 {
+        let child_constraints = match self.dir {
+            FlowDirection::Horizontal => Constraints {
+                min: uvec2(0, constraints.min.y),
+                max: uvec2(u32::MAX, constraints.max.y),
+            },
+            FlowDirection::Vertical => Constraints {
+                min: uvec2(constraints.min.x, 0),
+                max: uvec2(constraints.max.x, u32::MAX),
+            },
+        };
+
+        let mut cursor = 0;
+        let mut max_cross_size = 0;
+
+        for child in self.children.iter_mut() {
+            let size = child.inner.layout(&child_constraints);
+
+            let (cursor_step, main_size, cross_size) = match self.dir {
+                FlowDirection::Horizontal => (uvec2(cursor, 0), size.x, size.y),
+                FlowDirection::Vertical => (uvec2(0, cursor), size.y, size.x),
+            };
+
+            child.position += cursor_step;
+            cursor += main_size;
+            max_cross_size = cross_size.max(max_cross_size);
+        }
+
+        self.size = match self.dir {
+            FlowDirection::Horizontal => uvec2(cursor, max_cross_size),
+            FlowDirection::Vertical => uvec2(max_cross_size, cursor),
+        };
+
+        self.size
+    }
+
+    fn draw(&self) -> Pixels {
+        let mut dt = DrawTarget::new(self.size.x as i32, self.size.y as i32);
+
+        for child in self.children.iter() {
+            child.draw(&mut dt);
+        }
+
+        dt_to_pixels(&dt)
+    }
+
+    fn on_input(&mut self, event: InputEvent) {
+        for child in self.children.iter_mut() {
+            let offset = -child.position.as_ivec2();
+            child.inner.on_input(event.offset(offset));
+        }
+    }
+}
+
+impl Flow {
+    pub fn new(dir: FlowDirection) -> Self {
+        Self {
+            dir,
+            size: UVec2::ZERO,
+            children: Vec::new(),
+        }
+    }
+
+    pub fn child(mut self, child: impl Widget) -> Self {
+        self.children.push(Child::new(child));
+        self
+    }
+}
+
 pub struct Label {
     font: Arc<bdf::Font>,
     content: String,
@@ -93,17 +258,17 @@ impl Label {
 }
 
 /// A UI slider object
-struct Slider<'a> {
+struct Slider {
     track_size: Vec2,
-    track_source: Source<'a>,
+    track_source: Source<'static>,
     handle_pos: i32,
     handle_grab: Option<i32>,
     handle_size: Vec2,
-    handle_source: Source<'a>,
-    handle_grab_source: Source<'a>,
+    handle_source: Source<'static>,
+    handle_grab_source: Source<'static>,
 }
 
-impl<'a> Default for Slider<'a> {
+impl Default for Slider {
     fn default() -> Self {
         Self {
             track_size: Vec2::new(4.0, 100.0),
@@ -117,8 +282,15 @@ impl<'a> Default for Slider<'a> {
     }
 }
 
-impl<'a> Slider<'a> {
-    fn draw(&self, dt: &mut DrawTarget) {
+impl Widget for Slider {
+    fn layout(&mut self, _constraints: &Constraints) -> UVec2 {
+        uvec2(21, 108)
+    }
+
+    fn draw(&self) -> Pixels {
+        let mut dt = DrawTarget::new(21, 108);
+        dt.set_transform(&Transform::translation(11.0, 3.0));
+
         let half_handle_size = self.handle_size * 0.5;
         let half_track_size = self.track_size * 0.5;
         let mut pb = PathBuilder::new();
@@ -192,30 +364,78 @@ impl<'a> Slider<'a> {
             },
             &DRAW_OPTIONS,
         );
+
+        dt_to_pixels(&dt)
     }
 
-    fn on_drag_start(&mut self, pos: Vec2) {
-        let handle_pos = Vec2::new(0.0, self.handle_pos as f32);
-        let pos = (pos - handle_pos).abs() * 2.0;
+    fn on_input(&mut self, event: InputEvent) {
+        use InputEvent::*;
+        match event.offset(ivec2(-11, -2)) {
+            DragStart(pos) => {
+                let handle_pos = IVec2::new(0, self.handle_pos);
+                let pos = ((pos - handle_pos).abs() * 2).as_vec2();
 
-        if pos.x > self.handle_size.x || pos.y > self.handle_size.y {
-            return;
+                if pos.x > self.handle_size.x || pos.y > self.handle_size.y {
+                    return;
+                }
+
+                self.handle_grab = Some(self.handle_pos);
+            }
+            DragEnd => {
+                self.handle_grab = None;
+            }
+            DragMove(delta) => {
+                if let Some(grab) = self.handle_grab.as_ref() {
+                    self.handle_pos = *grab + delta.y;
+                    self.handle_pos = self
+                        .handle_pos
+                        .clamp(1, self.track_size.y.ceil() as i32 - 1);
+                }
+            }
         }
+    }
+}
 
-        self.handle_grab = Some(self.handle_pos);
+/// A container widget that acts as the root of a fixed-size UI.
+pub struct Screen {
+    child: Child,
+    size: UVec2,
+}
+
+impl Widget for Screen {
+    fn layout(&mut self, _constraints: &Constraints) -> UVec2 {
+        panic!("can't layout screen widget");
     }
 
-    fn on_drag_end(&mut self) {
-        self.handle_grab = None;
+    fn draw(&self) -> Pixels {
+        let mut dt = DrawTarget::new(self.size.x as i32, self.size.y as i32);
+
+        dt.clear(SolidSource::from_unpremultiplied_argb(
+            0xff, 0xd6, 0xf4, 0xfe,
+        ));
+
+        self.child.draw(&mut dt);
+        dt_to_pixels(&dt)
     }
 
-    fn on_drag_move(&mut self, delta: Vec2) {
-        if let Some(grab) = self.handle_grab.as_ref() {
-            self.handle_pos = *grab + delta.y.round() as i32;
-            self.handle_pos = self
-                .handle_pos
-                .clamp(1, self.track_size.y.ceil() as i32 - 1);
-        }
+    fn on_input(&mut self, event: InputEvent) {
+        self.child
+            .inner
+            .on_input(event.offset(-self.child.position.as_ivec2()));
+    }
+}
+
+impl Screen {
+    pub fn new(mut child: impl Widget, size: UVec2) -> Self {
+        let child_size = child.layout(&Constraints {
+            min: UVec2::ZERO,
+            max: size,
+        });
+
+        let mut child = Child::new(child);
+        child.position = (size - child_size) / 2;
+
+        Self { child, size }
     }
 }
 
@@ -257,6 +477,14 @@ pub extern "C" fn run() {
     let zero = Label::new(font.clone(), "0".into());
     let min = Label::new(font.clone(), "Min".into());
 
+    let mut row = Flow::new(FlowDirection::Horizontal);
+
+    for _ in 0..5 {
+        row = row.child(Slider::default());
+    }
+
+    let mut root = Screen::new(row, uvec2(canvas_size.0 as u32, canvas_size.1 as u32));
+
     let mut redraw = true;
     loop {
         loop {
@@ -278,8 +506,8 @@ pub extern "C" fn run() {
                     .round();
 
                     if let Some(start) = grab_start.as_ref() {
-                        let delta = cursor_pos - *start;
-                        slider.on_drag_move(delta);
+                        let delta = (cursor_pos - *start).as_ivec2();
+                        root.on_input(InputEvent::DragMove(delta));
                         redraw = true;
                     }
                 }
@@ -288,7 +516,7 @@ pub extern "C" fn run() {
                     button: MouseButton::Left,
                 } => {
                     grab_start = Some(cursor_pos);
-                    slider.on_drag_start(cursor_pos - slider_pos);
+                    root.on_input(InputEvent::DragStart(cursor_pos.as_ivec2()));
                     redraw = true;
                 }
                 WindowEvent::MouseInput {
@@ -296,7 +524,7 @@ pub extern "C" fn run() {
                     button: MouseButton::Left,
                 } => {
                     grab_start = None;
-                    slider.on_drag_end();
+                    root.on_input(InputEvent::DragEnd);
                     redraw = true;
                 }
                 WindowEvent::Redraw { .. } => {
@@ -310,7 +538,10 @@ pub extern "C" fn run() {
             continue;
         }
 
-        dt.clear(SolidSource::from_unpremultiplied_argb(
+        canvas.update(root.draw());
+        redraw = false;
+
+        /*dt.clear(SolidSource::from_unpremultiplied_argb(
             0xff, 0xd6, 0xf4, 0xfe,
         ));
 
@@ -334,6 +565,6 @@ pub extern "C" fn run() {
         min.draw(&mut dt);
 
         canvas.update(dt_to_pixels(&dt));
-        redraw = false;
+        redraw = false;*/
     }
 }

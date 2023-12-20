@@ -80,6 +80,9 @@ pub enum RendererSuccess {
 pub enum RendererError {
     /// A lump involved in this operation was improperly formatted or not found.
     LumpError,
+
+    /// A skeleton contained invalid data.
+    SkeletonError,
 }
 
 pub type RendererResponse = Result<RendererSuccess, RendererError>;

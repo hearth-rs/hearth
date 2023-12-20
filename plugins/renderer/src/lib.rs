@@ -303,13 +303,13 @@ impl RequestResponseProcess for RendererService {
                 material,
                 transform,
             } => {
-                let mesh = match Self::try_load_asset::<MeshLoader>(&request, mesh).await {
+                let mesh = match Self::try_load_asset::<MeshLoader>(request, mesh).await {
                     Ok(mesh) => mesh,
                     Err(err) => return err.into(),
                 };
 
                 let material =
-                    match Self::try_load_asset::<MaterialLoader>(&request, material).await {
+                    match Self::try_load_asset::<MaterialLoader>(request, material).await {
                         Ok(material) => material,
                         Err(err) => return err.into(),
                     };
@@ -361,7 +361,7 @@ impl RequestResponseProcess for RendererService {
             }
             SetSkybox { texture } => {
                 let texture =
-                    match Self::try_load_asset::<CubeTextureLoader>(&request, texture).await {
+                    match Self::try_load_asset::<CubeTextureLoader>(request, texture).await {
                         Ok(texture) => texture,
                         Err(err) => return err.into(),
                     };

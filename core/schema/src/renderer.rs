@@ -124,10 +124,13 @@ pub struct MaterialData {
 
 /// A mesh lump's data format.
 ///
-/// All vertex attributes must be the same length.
+/// All vertex attribute arrays must be either empty or length `vertex_num`.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MeshData {
+    pub vertex_num: u32,
+
+    /// Must be `vertex_num`; cannot be absent.
     #[serde_as(as = "Base64")]
     pub positions: ByteVec<Vec3>,
 

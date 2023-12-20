@@ -98,8 +98,8 @@ pub struct TextureLoader(Arc<Renderer>);
 
 #[async_trait]
 impl JsonAssetLoader for TextureLoader {
-    type Asset = TextureHandle;
-    type Data = Texture2DData;
+    type Asset = Texture2DHandle;
+    type Data = TextureData;
 
     async fn load_asset(
         &self,

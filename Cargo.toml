@@ -35,12 +35,12 @@ features = ["derive"]
 
 [workspace.dependencies.rend3]
 git = "https://github.com/BVE-Reborn/rend3.git"
-rev = "f820b98"
+rev = "e6d50ff"
 
 [workspace.dependencies.rend3-framework]
 git = "https://github.com/BVE-Reborn/rend3.git"
-rev = "f820b98"
+rev = "e6d50ff"
 
 [workspace.dependencies.rend3-routine]
 git = "https://github.com/BVE-Reborn/rend3.git"
-rev = "f820b98"
+rev = "e6d50ff"

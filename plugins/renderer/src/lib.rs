@@ -50,23 +50,47 @@ impl JsonAssetLoader for MeshLoader {
         _store: &AssetStore,
         data: Self::Data,
     ) -> anyhow::Result<Self::Asset> {
-        let mesh = Mesh {
-            vertex_positions: data.positions.0,
-            vertex_normals: data.normals.0,
-            vertex_tangents: data.tangents.0,
-            vertex_uv0: data.uv0.0,
-            vertex_uv1: data.uv1.0,
-            vertex_colors: data.colors.0,
-            vertex_joint_indices: data.joint_indices.0,
-            vertex_joint_weights: data.joint_weights.0,
-            indices: data.indices.0,
-        };
+        let num = data.vertex_num as usize;
 
-        let _ = mesh.validate()?;
+        let position_num = data.positions.len();
+        if position_num != num {
+            bail!("vertex num is {num}; position num is {position_num}");
+        }
 
-        let handle = self.0.add_mesh(mesh);
+        let mut builder = MeshBuilder::new(data.positions.to_vec(), Handedness::Right)
+            .with_indices(data.indices.to_vec());
 
-        Ok(handle)
+        if data.normals.len() == num {
+            builder = builder.with_vertex_normals(data.normals.to_vec());
+        }
+
+        if data.tangents.len() == num {
+            builder = builder.with_vertex_tangents(data.tangents.to_vec());
+        }
+
+        if data.uv0.len() == num {
+            builder = builder.with_vertex_texture_coordinates_0(data.uv0.to_vec());
+        }
+
+        if data.uv1.len() == num {
+            builder = builder.with_vertex_texture_coordinates_1(data.uv1.to_vec());
+        }
+
+        if data.colors.len() == num {
+            builder = builder.with_vertex_color_0(data.colors.to_vec());
+        }
+
+        if data.joint_indices.len() == num {
+            builder = builder.with_vertex_joint_indices(data.joint_indices.to_vec());
+        }
+
+        if data.joint_weights.len() == num {
+            builder = builder.with_vertex_joint_weights(data.joint_weights.to_vec());
+        }
+
+        self.0
+            .add_mesh(builder.build()?)
+            .map_err(|err| anyhow!("mesh add error: {err}"))
     }
 }
 

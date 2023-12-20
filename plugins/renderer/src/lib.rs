@@ -153,7 +153,7 @@ impl JsonAssetLoader for CubeTextureLoader {
             mip_source: MipmapSource::Generated,
         };
 
-        let handle = self.0.add_texture_cube(texture);
+        let handle = self.0.add_texture_cube(texture)?;
 
         Ok(handle)
     }
@@ -174,6 +174,7 @@ impl SinkProcess for DirectionalLightInstance {
         use DirectionalLightUpdate::*;
         match message.data {
             Color(color) => change.color = Some(color),
+            Resolution(resolution) => change.resolution = Some(resolution),
             Intensity(intensity) => change.intensity = Some(intensity),
             Direction(direction) => change.direction = Some(direction),
             Distance(distance) => change.distance = Some(distance),
@@ -247,6 +248,7 @@ impl RequestResponseProcess for RendererService {
                     intensity: initial_state.intensity,
                     direction: initial_state.direction,
                     distance: initial_state.distance,
+                    resolution: initial_state.resolution,
                 };
 
                 let handle = self.renderer.add_directional_light(light);

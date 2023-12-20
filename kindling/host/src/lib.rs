@@ -99,6 +99,7 @@ where
     }
 }
 
+/// Takes a `ProcessLogLevel` and a format string and prints it to the terminal.
 #[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {
@@ -110,6 +111,7 @@ macro_rules! log {
     }
 }
 
+/// Prints a `Trace` level log message to the terminal.
 #[macro_export]
 macro_rules! trace {
     ($($arg:tt)*) => {
@@ -117,6 +119,7 @@ macro_rules! trace {
     };
 }
 
+/// Prints a `Debug` level log message to the terminal.
 #[macro_export]
 macro_rules! debug {
     ($($arg:tt)*) => {
@@ -124,6 +127,7 @@ macro_rules! debug {
     };
 }
 
+/// Prints an `Info` level log message to the terminal.
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {
@@ -131,6 +135,7 @@ macro_rules! info {
     };
 }
 
+/// Prints a `Warning` level log message to the terminal.
 #[macro_export]
 macro_rules! warning {
     ($($arg:tt)*) => {
@@ -138,6 +143,7 @@ macro_rules! warning {
     };
 }
 
+/// Prints a `Error` level log message to the terminal.
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)*) => {

@@ -99,7 +99,7 @@ pub struct TextureLoader(Arc<Renderer>);
 #[async_trait]
 impl JsonAssetLoader for TextureLoader {
     type Asset = TextureHandle;
-    type Data = TextureData;
+    type Data = Texture2DData;
 
     async fn load_asset(
         &self,
@@ -130,7 +130,7 @@ pub struct CubeTextureLoader(Arc<Renderer>);
 
 #[async_trait]
 impl JsonAssetLoader for CubeTextureLoader {
-    type Asset = TextureHandle;
+    type Asset = TextureCubeHandle;
     type Data = TextureData;
 
     async fn load_asset(

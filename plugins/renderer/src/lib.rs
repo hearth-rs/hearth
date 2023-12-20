@@ -24,7 +24,7 @@ use hearth_rend3::{
     Rend3Command, Rend3Plugin,
 };
 use hearth_runtime::{
-    anyhow::{self, bail},
+    anyhow::{self, anyhow, bail},
     asset::{AssetLoader, AssetStore, JsonAssetLoader},
     async_trait, cargo_process_metadata,
     hearth_schema::{renderer::*, LumpId},
@@ -121,8 +121,9 @@ impl JsonAssetLoader for TextureLoader {
             mip_source: MipmapSource::Uploaded,
         };
 
-        let handle = self.0.add_texture_2d(texture);
-        Ok(handle)
+        self.0
+            .add_texture_2d(texture)
+            .map_err(|err| anyhow!("2D texture add error: {err}"))
     }
 }
 
@@ -153,9 +154,9 @@ impl JsonAssetLoader for CubeTextureLoader {
             mip_source: MipmapSource::Generated,
         };
 
-        let handle = self.0.add_texture_cube(texture)?;
-
-        Ok(handle)
+        self.0
+            .add_texture_cube(texture)
+            .map_err(|err| anyhow!("cube texture add error: {err}"))
     }
 }
 

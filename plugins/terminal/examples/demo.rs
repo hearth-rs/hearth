@@ -123,14 +123,16 @@ impl DemoInner {
         load_skybox_image(&mut data, include_bytes!("skybox/front.jpg"));
         load_skybox_image(&mut data, include_bytes!("skybox/back.jpg"));
 
-        let skybox = renderer.add_texture_cube(Texture {
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            size: (2048, 2048).into(),
-            data,
-            label: Some("skybox".into()),
-            mip_count: MipmapCount::ONE,
-            mip_source: MipmapSource::Uploaded,
-        });
+        let skybox = renderer
+            .add_texture_cube(Texture {
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                size: (2048, 2048).into(),
+                data,
+                label: Some("skybox".into()),
+                mip_count: MipmapCount::ONE,
+                mip_source: MipmapSource::Uploaded,
+            })
+            .unwrap();
 
         Self {
             pipelines,

@@ -290,12 +290,20 @@ impl RequestResponseProcess for RendererService {
                     };
 
                 let (mesh_kind, skeleton) = if let Some(skeleton) = skeleton.as_ref() {
-                    let skeleton = self.renderer.add_skeleton(Skeleton {
+                    let skeleton = Skeleton {
                         joint_matrices: skeleton.to_owned(),
                         mesh: mesh.as_ref().to_owned(),
-                    });
+                    };
 
-                    (ObjectMeshKind::Animated(skeleton.clone()), Some(skeleton))
+                    let handle = match self.renderer.add_skeleton(skeleton) {
+                        Ok(handle) => handle,
+                        Err(err) => {
+                            error!("add_skeleton() error: {err:?}");
+                            return RendererError::SkeletonError.into();
+                        }
+                    };
+
+                    (ObjectMeshKind::Animated(handle.clone()), Some(handle))
                 } else {
                     (ObjectMeshKind::Static(mesh.as_ref().to_owned()), None)
                 };

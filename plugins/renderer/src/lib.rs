@@ -308,11 +308,11 @@ impl RequestResponseProcess for RendererService {
                     Err(err) => return err.into(),
                 };
 
-                let material =
-                    match Self::try_load_asset::<MaterialLoader>(request, material).await {
-                        Ok(material) => material,
-                        Err(err) => return err.into(),
-                    };
+                let material = match Self::try_load_asset::<MaterialLoader>(request, material).await
+                {
+                    Ok(material) => material,
+                    Err(err) => return err.into(),
+                };
 
                 let (mesh_kind, skeleton) = if let Some(skeleton) = skeleton.as_ref() {
                     let skeleton = Skeleton {

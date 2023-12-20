@@ -87,6 +87,7 @@ pub type RendererResponse = Result<RendererSuccess, RendererError>;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DirectionalLightState {
     pub color: Vec3,
+    pub resolution: u16,
     pub intensity: f32,
     pub direction: Vec3,
     pub distance: f32,
@@ -95,6 +96,7 @@ pub struct DirectionalLightState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum DirectionalLightUpdate {
     Color(Vec3),
+    Resolution(u16),
     Intensity(f32),
     Direction(Vec3),
     Distance(f32),

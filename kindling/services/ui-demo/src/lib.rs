@@ -1,4 +1,5 @@
 // Copyright (c) 2023 Roux
+// Copyright (c) 2023 Marceline Cramer
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // This file is part of Hearth.
@@ -16,7 +17,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
 use hearth_guest::{canvas::*, window::*};
 use kindling_host::{
@@ -27,6 +28,9 @@ use kindling_host::{
     },
 };
 use raqote::*;
+use view::View;
+
+pub mod view;
 
 static DRAW_OPTIONS: DrawOptions = DrawOptions {
     antialias: AntialiasMode::None,
@@ -75,7 +79,10 @@ impl InputEvent {
     }
 }
 
-pub trait Widget: 'static {
+/// A sender for a widget to a view by ID path.
+pub type MessageSender<'a> = Box<dyn FnMut(Vec<view::Id>, Box<dyn Any>) + 'a>;
+
+pub trait Widget: Any + 'static {
     /// Propagates layout constraints to this widget and returns the new widget
     /// size.
     fn layout(&mut self, constraints: &Constraints) -> UVec2;
@@ -84,7 +91,9 @@ pub trait Widget: 'static {
     fn draw(&self) -> Pixels;
 
     /// Processes an incoming input event.
-    fn on_input(&mut self, event: InputEvent);
+    fn on_input(&mut self, event: InputEvent, tx: &mut MessageSender);
+
+    fn as_any(&mut self) -> &mut dyn Any;
 }
 
 /// A helper struct for managing [Widget] implementations in other widgets.
@@ -126,6 +135,7 @@ impl Child {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlowDirection {
     Horizontal,
     Vertical,
@@ -184,11 +194,15 @@ impl Widget for Flow {
         dt_to_pixels(&dt)
     }
 
-    fn on_input(&mut self, event: InputEvent) {
+    fn on_input(&mut self, event: InputEvent, tx: &mut MessageSender) {
         for child in self.children.iter_mut() {
             let offset = -child.position.as_ivec2();
-            child.inner.on_input(event.offset(offset));
+            child.inner.on_input(event.offset(offset), tx);
         }
+    }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -258,7 +272,7 @@ impl Label {
 }
 
 /// A UI slider object
-struct Slider {
+pub struct Slider {
     track_size: Vec2,
     track_source: Source<'static>,
     handle_pos: i32,
@@ -266,10 +280,11 @@ struct Slider {
     handle_size: Vec2,
     handle_source: Source<'static>,
     handle_grab_source: Source<'static>,
+    path: Vec<view::Id>,
 }
 
-impl Default for Slider {
-    fn default() -> Self {
+impl Slider {
+    pub fn new(path: Vec<view::Id>) -> Self {
         Self {
             track_size: Vec2::new(4.0, 100.0),
             track_source: source_from_rgb(255, 255, 255),
@@ -278,6 +293,7 @@ impl Default for Slider {
             handle_size: Vec2::new(20.0, 8.0),
             handle_source: source_from_rgb(255, 255, 255),
             handle_grab_source: source_from_rgb(0xd7, 0xd9, 0xd6),
+            path,
         }
     }
 }
@@ -368,7 +384,7 @@ impl Widget for Slider {
         dt_to_pixels(&dt)
     }
 
-    fn on_input(&mut self, event: InputEvent) {
+    fn on_input(&mut self, event: InputEvent, tx: &mut MessageSender) {
         use InputEvent::*;
         match event.offset(ivec2(-11, -2)) {
             DragStart(pos) => {
@@ -390,9 +406,15 @@ impl Widget for Slider {
                     self.handle_pos = self
                         .handle_pos
                         .clamp(1, self.track_size.y.ceil() as i32 - 1);
+
+                    tx(self.path.clone(), Box::new(self.handle_pos));
                 }
             }
         }
+    }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -418,10 +440,14 @@ impl Widget for Screen {
         dt_to_pixels(&dt)
     }
 
-    fn on_input(&mut self, event: InputEvent) {
+    fn on_input(&mut self, event: InputEvent, tx: &mut MessageSender) {
         self.child
             .inner
-            .on_input(event.offset(-self.child.position.as_ivec2()));
+            .on_input(event.offset(-self.child.position.as_ivec2()), tx);
+    }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -444,6 +470,16 @@ fn source_from_rgb(r: u8, g: u8, b: u8) -> Source<'static> {
     Source::Solid(SolidSource::from_unpremultiplied_argb(255, r, g, b))
 }
 
+/// The app view logic.
+fn app_logic(_app: &()) -> impl view::View<()> {
+    use view::*;
+
+    Flow::row(
+        Slider(|_app: &mut (), pos| info!("slider 1 pos: {pos}")),
+        Slider(|_app: &mut (), pos| info!("slider 2 pos: {pos}")),
+    )
+}
+
 #[no_mangle]
 pub extern "C" fn run() {
     let events = MAIN_WINDOW.subscribe();
@@ -463,30 +499,28 @@ pub extern "C" fn run() {
         CanvasSamplingMode::Nearest,
     );
     let canvas_size = (200, 200);
-    let mut dt = DrawTarget::new(canvas_size.0, canvas_size.1);
     let mut window_size = Vec2::new(10.0, 10.0);
-    let mut slider = Slider::default();
     let mut cursor_pos = Vec2::ZERO;
-    let slider_pos = Vec2::new(100.0, 50.0);
     let mut grab_start: Option<Vec2> = None;
 
-    let font = Arc::new(bdf::read(include_bytes!("cozette/cozette.bdf").as_slice()).unwrap());
+    // xilem stuffs
+    let mut app_data = ();
+    let mut app_view = app_logic(&app_data);
+    let (app_id, mut app_state, app_widget) = app_view.build(&[]);
 
-    let label = Label::new(font.clone(), "Hello, Hearth! ♡".into());
-    let max = Label::new(font.clone(), "Max".into());
-    let zero = Label::new(font.clone(), "0".into());
-    let min = Label::new(font.clone(), "Min".into());
-
-    let mut row = Flow::new(FlowDirection::Horizontal);
-
-    for _ in 0..5 {
-        row = row.child(Slider::default());
-    }
-
-    let mut root = Screen::new(row, uvec2(canvas_size.0 as u32, canvas_size.1 as u32));
+    let mut root = Screen::new(
+        app_widget,
+        uvec2(canvas_size.0 as u32, canvas_size.1 as u32),
+    );
 
     let mut redraw = true;
     loop {
+        let mut messages = Vec::new();
+
+        let mut msg_tx: MessageSender = Box::new(|path: Vec<view::Id>, msg: Box<dyn Any>| {
+            messages.push((path, msg));
+        });
+
         loop {
             let (msg, _) = events.recv_json::<WindowEvent>();
 
@@ -507,7 +541,7 @@ pub extern "C" fn run() {
 
                     if let Some(start) = grab_start.as_ref() {
                         let delta = (cursor_pos - *start).as_ivec2();
-                        root.on_input(InputEvent::DragMove(delta));
+                        root.on_input(InputEvent::DragMove(delta), &mut msg_tx);
                         redraw = true;
                     }
                 }
@@ -516,7 +550,7 @@ pub extern "C" fn run() {
                     button: MouseButton::Left,
                 } => {
                     grab_start = Some(cursor_pos);
-                    root.on_input(InputEvent::DragStart(cursor_pos.as_ivec2()));
+                    root.on_input(InputEvent::DragStart(cursor_pos.as_ivec2()), &mut msg_tx);
                     redraw = true;
                 }
                 WindowEvent::MouseInput {
@@ -524,7 +558,7 @@ pub extern "C" fn run() {
                     button: MouseButton::Left,
                 } => {
                     grab_start = None;
-                    root.on_input(InputEvent::DragEnd);
+                    root.on_input(InputEvent::DragEnd, &mut msg_tx);
                     redraw = true;
                 }
                 WindowEvent::Redraw { .. } => {
@@ -534,37 +568,31 @@ pub extern "C" fn run() {
             }
         }
 
+        drop(msg_tx);
+
+        for (path, msg) in messages.into_iter().rev() {
+            let app_widget = root.child.inner.as_any().downcast_mut().unwrap();
+
+            app_view.event(
+                path.as_slice(),
+                &mut app_state,
+                app_widget,
+                msg,
+                &mut app_data,
+            );
+
+            let new_view = app_logic(&app_data);
+
+            app_view.rebuild(&app_id, &mut app_state, app_widget, &app_view);
+
+            app_view = new_view;
+        }
+
         if !redraw {
             continue;
         }
 
         canvas.update(root.draw());
         redraw = false;
-
-        /*dt.clear(SolidSource::from_unpremultiplied_argb(
-            0xff, 0xd6, 0xf4, 0xfe,
-        ));
-
-        let translate = Transform::translation;
-
-        dt.set_transform(&translate(slider_pos.x, slider_pos.y));
-        slider.draw(&mut dt);
-
-        dt.set_transform(&translate(10.0, 15.0));
-        label.draw(&mut dt);
-
-        let label_x = slider_pos.x - 40.0;
-
-        dt.set_transform(&translate(label_x, slider_pos.y));
-        max.draw(&mut dt);
-
-        dt.set_transform(&translate(label_x, slider_pos.y + 50.0));
-        zero.draw(&mut dt);
-
-        dt.set_transform(&translate(label_x, slider_pos.y + 100.0));
-        min.draw(&mut dt);
-
-        canvas.update(dt_to_pixels(&dt));
-        redraw = false;*/
     }
 }

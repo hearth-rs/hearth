@@ -271,6 +271,96 @@ impl Label {
     }
 }
 
+enum ButtonState {
+    Idle,
+    Clicked,
+}
+
+pub struct Button {
+    size: UVec2,
+    padding: UVec2,
+    state: ButtonState,
+    source: Source<'static>,
+    push_source: Source<'static>,
+    path: Vec<view::Id>,
+}
+
+impl Button {
+    pub fn new(path: Vec<view::Id>) -> Self {
+        Self {
+            size: UVec2::new(40, 20),
+            padding: UVec2::new(1, 1),
+            state: ButtonState::Idle,
+            source: source_from_rgb(255, 255, 255),
+            push_source: source_from_rgb(0xd7, 0xd9, 0xd6),
+            path,
+        }
+    }
+}
+
+impl Widget for Button {
+    fn layout(&mut self, _constraints: &Constraints) -> UVec2 {
+        self.size + self.padding
+    }
+
+    fn draw(&self) -> Pixels {
+        let padded_size = (self.size + self.padding).as_vec2();
+        let mut dt = DrawTarget::new(padded_size.x as i32, padded_size.y as i32);
+        dt.set_transform(&Transform::translation(
+            padded_size.x / 2.0,
+            padded_size.y / 2.0,
+        ));
+        let source = match self.state {
+            ButtonState::Idle => self.source.clone(),
+            ButtonState::Clicked => self.push_source.clone(),
+        };
+
+        let mut pb = PathBuilder::new();
+        let size = self.size.as_vec2();
+        pb.rect(-size.x / 2.0, -size.y / 2.0, size.x, size.y);
+        let path = pb.finish();
+        dt.fill(&path, &source, &DRAW_OPTIONS);
+        dt.stroke(
+            &path,
+            &source_from_rgb(0, 0, 0),
+            &StrokeStyle {
+                width: 1.0,
+                join: LineJoin::Round,
+                ..Default::default()
+            },
+            &DRAW_OPTIONS,
+        );
+
+        dt_to_pixels(&dt)
+    }
+
+    fn on_input(&mut self, event: InputEvent, tx: &mut MessageSender) {
+        let size = (self.size + self.padding).as_ivec2();
+        use InputEvent::*;
+        match event.offset(-size / 2) {
+            DragStart(pos) => {
+                let pos = (pos * 2).abs().as_uvec2();
+
+                if pos.x > self.size.x || pos.y > self.size.y {
+                    return;
+                }
+                self.state = ButtonState::Clicked;
+            }
+            DragEnd => {
+                if let ButtonState::Clicked = self.state {
+                    tx(self.path.clone(), Box::new(()));
+                    self.state = ButtonState::Idle
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
 /// A UI slider object
 pub struct Slider {
     track_size: Vec2,
@@ -473,11 +563,7 @@ fn source_from_rgb(r: u8, g: u8, b: u8) -> Source<'static> {
 /// The app view logic.
 fn app_logic(_app: &()) -> impl view::View<()> {
     use view::*;
-
-    Flow::row(
-        Slider(|_app: &mut (), pos| info!("slider 1 pos: {pos}")),
-        Slider(|_app: &mut (), pos| info!("slider 2 pos: {pos}")),
-    )
+    Button(|_app: &mut ()| info!("button clicked!"))
 }
 
 #[no_mangle]

@@ -111,6 +111,42 @@ pub trait View<T> {
     );
 }
 
+pub struct Button<F>(pub F);
+
+impl<T, F: Fn(&mut T)> View<T> for Button<F> {
+    type State = ();
+
+    type Widget = crate::Button;
+
+    fn build(&self, path: IdPath<'_>) -> (Id, Self::State, Self::Widget) {
+        let id = Id::next();
+        let mut full_path = path.to_vec();
+        full_path.push(id);
+        let button = crate::Button::new(full_path);
+        (id, (), button)
+    }
+
+    fn rebuild(
+        &self,
+        _id: &Id,
+        _state: &mut Self::State,
+        _widget: &mut Self::Widget,
+        _prev: &Self,
+    ) {
+    }
+
+    fn event(
+        &self,
+        _path: IdPath<'_>,
+        _state: &mut Self::State,
+        _widget: &mut Self::Widget,
+        _ev: Event,
+        app: &mut T,
+    ) {
+        (self.0)(app);
+    }
+}
+
 /// A slider view (not widget).
 pub struct Slider<F>(pub F);
 

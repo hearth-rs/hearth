@@ -565,6 +565,15 @@ impl Screen {
 
         Self { child, size }
     }
+
+    pub fn relayout(&mut self) {
+        let child_size = self.child.inner.layout(&Constraints {
+            min: UVec2::ZERO,
+            max: self.size,
+        });
+
+        self.child.position = (self.size - child_size) / 2;
+    }
 }
 
 /// Helper function to initialize raqote Source from RGB values
@@ -690,6 +699,7 @@ pub extern "C" fn run() {
             continue;
         }
 
+        root.relayout();
         canvas.update(root.draw());
         redraw = false;
     }

@@ -171,7 +171,7 @@ impl Widget for Flow {
                 FlowDirection::Vertical => (uvec2(0, cursor), size.y, size.x),
             };
 
-            child.position += cursor_step;
+            child.position = cursor_step;
             cursor += main_size;
             max_cross_size = cross_size.max(max_cross_size);
         }

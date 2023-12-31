@@ -162,6 +162,7 @@ impl Widget for Flow {
 
         let mut cursor = 0;
         let mut max_cross_size = 0;
+        let mut cross_sizes = Vec::new();
 
         for child in self.children.iter_mut() {
             let size = child.inner.layout(&child_constraints);
@@ -174,6 +175,17 @@ impl Widget for Flow {
             child.position = cursor_step;
             cursor += main_size;
             max_cross_size = cross_size.max(max_cross_size);
+            cross_sizes.push(cross_size);
+        }
+
+        for (child, cross_size) in self.children.iter_mut().zip(cross_sizes) {
+            let remaining = max_cross_size.saturating_sub(cross_size);
+            let offset = remaining / 2;
+
+            match self.dir {
+                FlowDirection::Horizontal => child.position.y = offset,
+                FlowDirection::Vertical => child.position.x = offset,
+            }
         }
 
         self.size = match self.dir {

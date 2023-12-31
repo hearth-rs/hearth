@@ -690,7 +690,7 @@ pub extern "C" fn run() {
 
             let new_view = app_logic(&app_data);
 
-            app_view.rebuild(&app_id, &mut app_state, app_widget, &app_view);
+            new_view.rebuild(&app_id, &mut app_state, app_widget, &app_view);
 
             app_view = new_view;
         }

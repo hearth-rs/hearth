@@ -18,7 +18,11 @@
 
 //! Xilem-inspired application UI logic driven by diffing view trees.
 
-use std::{any::Any, marker::PhantomData, sync::atomic::AtomicUsize};
+use std::{
+    any::Any,
+    marker::PhantomData,
+    sync::{atomic::AtomicUsize, Arc},
+};
 
 use kindling_host::prelude::*;
 
@@ -109,6 +113,34 @@ pub trait View<T> {
         ev: Event,
         app: &mut T,
     );
+}
+
+pub struct Label(pub Arc<bdf::Font>, pub String);
+
+impl<T> View<T> for Label {
+    type State = ();
+    type Widget = crate::Label;
+
+    fn build(&self, _path: IdPath<'_>) -> (Id, Self::State, Self::Widget) {
+        let widget = crate::Label::new(self.0.to_owned(), self.1.to_owned());
+        (Id::next(), (), widget)
+    }
+
+    fn rebuild(&self, _id: &Id, _state: &mut Self::State, widget: &mut Self::Widget, prev: &Self) {
+        if !Arc::ptr_eq(&self.0, &prev.0) || self.1 != prev.1 {
+            *widget = crate::Label::new(self.0.to_owned(), self.1.to_owned());
+        }
+    }
+
+    fn event(
+        &self,
+        _path: IdPath<'_>,
+        _state: &mut Self::State,
+        _widget: &mut Self::Widget,
+        _ev: Event,
+        _app: &mut T,
+    ) {
+    }
 }
 
 pub struct Button<F>(pub F);

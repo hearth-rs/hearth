@@ -30,6 +30,7 @@ use kindling_host::{
 use raqote::*;
 use view::View;
 
+pub mod text;
 pub mod view;
 
 static DRAW_OPTIONS: DrawOptions = DrawOptions {
@@ -234,51 +235,29 @@ impl Flow {
 }
 
 pub struct Label {
-    font: Arc<bdf::Font>,
-    content: String,
+    pixels: Pixels,
+}
+
+impl Widget for Label {
+    fn layout(&mut self, _constraints: &Constraints) -> UVec2 {
+        uvec2(self.pixels.width, self.pixels.height)
+    }
+
+    fn draw(&self) -> Pixels {
+        self.pixels.clone()
+    }
+
+    fn on_input(&mut self, _event: InputEvent, _tx: &mut MessageSender) {}
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl Label {
     pub fn new(font: Arc<bdf::Font>, content: String) -> Self {
-        Self { font, content }
-    }
-
-    pub fn draw(&self, dt: &mut DrawTarget) {
-        let mut cursor = 0;
-        for c in self.content.chars() {
-            let Some(glyph) = self.font.glyphs().get(&c) else {
-                continue;
-            };
-
-            let (mut ox, mut oy) = glyph
-                .vector()
-                .map(|(x, y)| (*x as i32, *y as i32))
-                .unwrap_or((glyph.bounds().x, glyph.bounds().y));
-
-            ox += cursor;
-            oy += glyph.bounds().height as i32 - self.font.bounds().height as i32 + 10;
-
-            for py in 0..glyph.height() {
-                for px in 0..glyph.width() {
-                    if !glyph.get(px, py) {
-                        continue;
-                    }
-
-                    dt.fill_rect(
-                        (px as i32 + ox) as f32,
-                        (py as i32 - oy) as f32,
-                        1.0,
-                        1.0,
-                        &source_from_rgb(0, 0, 0),
-                        &DRAW_OPTIONS,
-                    );
-                }
-            }
-
-            cursor += glyph
-                .device_width()
-                .map(|w| w.0 as i32)
-                .unwrap_or(glyph.width() as i32 + 1);
+        Self {
+            pixels: text::draw_text(font.as_ref(), &content),
         }
     }
 }
@@ -301,7 +280,7 @@ impl Button {
     pub fn new(path: Vec<view::Id>) -> Self {
         Self {
             size: UVec2::new(40, 20),
-            padding: UVec2::new(1, 1),
+            padding: UVec2::new(16, 16),
             state: ButtonState::Idle,
             source: source_from_rgb(255, 255, 255),
             push_source: source_from_rgb(0xd7, 0xd9, 0xd6),
@@ -581,10 +560,29 @@ fn source_from_rgb(r: u8, g: u8, b: u8) -> Source<'static> {
     Source::Solid(SolidSource::from_unpremultiplied_argb(255, r, g, b))
 }
 
+struct App {
+    font: Arc<bdf::Font>,
+    slider: i32,
+    count: u32,
+}
+
 /// The app view logic.
-fn app_logic(_app: &()) -> impl view::View<()> {
+fn app_logic(app: &App) -> impl view::View<App> {
     use view::*;
-    Button(|_app: &mut ()| info!("button clicked!"))
+
+    Flow::row(
+        Flow::column(
+            Label(app.font.to_owned(), format!("Clicked {} times", app.count)),
+            Flow::row(
+                Button(|app: &mut App| app.count += 1),
+                Button(|app: &mut App| app.count = 0),
+            ),
+        ),
+        Flow::column(
+            Label(app.font.to_owned(), format!("Slider: {}", app.slider)),
+            Slider(|app: &mut App, pos| app.slider = pos),
+        ),
+    )
 }
 
 #[no_mangle]
@@ -605,13 +603,21 @@ pub extern "C" fn run() {
         },
         CanvasSamplingMode::Nearest,
     );
+
     let canvas_size = (200, 200);
     let mut window_size = Vec2::new(10.0, 10.0);
     let mut cursor_pos = Vec2::ZERO;
     let mut grab_start: Option<Vec2> = None;
 
+    let font = Arc::new(bdf::read(include_bytes!("cozette/cozette.bdf").as_slice()).unwrap());
+
     // xilem stuffs
-    let mut app_data = ();
+    let mut app_data = App {
+        font,
+        count: 0,
+        slider: 0,
+    };
+
     let mut app_view = app_logic(&app_data);
     let (app_id, mut app_state, app_widget) = app_view.build(&[]);
 

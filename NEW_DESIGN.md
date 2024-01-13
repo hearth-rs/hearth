@@ -61,14 +61,14 @@ from the inside.
 
 > TODO: bring the new tagline in here!
 
-Hearth uses a **message-passing virtual machine** as the foundation for all of
-its behavior. The VM supports **hot-reload** and **self-modification**: every
-part of the Hearth environment can be updated and reloaded with new code
-without shutting down the rest of the runtime.
+Hearth uses a **message-passing, user-space microkernel architecture**
+for its foundational runtime. This runtime supports **hot-reload** and
+**self-modification**: every part of the Hearth environment can be updated and
+reloaded with new code without shutting down the rest of the runtime.
 
-The VM is also distributed across a **client-server network
-architecture**: multiple clients may connect to a single server. Resources on
-one peer can be made transparently accessible to any other peer.
+The runtime is also distributed across a **client-server network architecture**:
+multiple clients may connect to a single server. Resources on one peer can be
+made transparently accessible to any other peer.
 
 Hearth combines its distributed VM with elements of your run-of-the-mill game
 engine; features such as a 3D rendering engine, audio output, or desktop
@@ -81,6 +81,8 @@ create Hearth content, is created inside of Hearth itself.
 - open source
 - self-hosting
 - AGPL licensing
+- volunteer-ran
+- decision-making prioritizes quality and longevity
 
 # Inspiration
 
@@ -116,8 +118,12 @@ are easily capable of hot-reload.
 
 # Client-Server Architecture
 
-Hearth has two binaries: `hearth-client` and `hearth-server`, which (clearly)
-implement the Hearth client and server.
+Hearth has two binaries: `hearth-client` and `hearth-server`, which each
+respectively implement the Hearth client and server. Each binary packages a
+slightly different version of the Hearth runtime by including the relevant
+plugins for that runtime's purpose. For instance, only `hearth-server` provides
+a native networking server plugin, and only `hearth-client` provides native
+graphical plugins such as a 3D renderer or a native desktop window.
 
 Clients and servers communicate over the Internet using [WebSocket]
 (https://en.wikipedia.org/wiki/WebSocket), a standard web protocol for
@@ -167,10 +173,11 @@ concern in the quest to hot-reload *everything*.
 
 - bulk data format
 - content addressed
-- more efficient than message-passing
+- more efficient than message-passing big data
+- encourages simple data caching patterns
 - input to various host services
 
-# Message-Passing VM
+# Message-Passing Microkernel
 
 In Hearth, **everything is a process**. Processes are isolated, concurrent
 units of execution that may **only share data via message-passing**. Because of
@@ -320,5 +327,6 @@ Flue API.
 # Host Development
 
 - `hearth-runtime`
-- plugins
-- assets
+- what are assets?
+- host-side depgraph goes here
+- explain repository layout

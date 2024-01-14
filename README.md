@@ -149,7 +149,7 @@ we're still working on implementing all of the most important native features.
 | Renderer API | 🚧 | [#197](https://github.com/hearth-rs/hearth/pull/197) | alpha | Expose a full 3D rendering API. |
 | WebSockets | ❌ | [#163](https://github.com/hearth-rs/hearth/issues/163) | alpha | Connect to Hearth servers using the WebSocket and TLS standards. |
 | Windows IPC | ❌ | [#175](https://github.com/hearth-rs/hearth/issues/175) | alpha | Use Windows Named Pipes to access Hearth from Windows processes. |
-| Docker | ❌ | N/A | alpha | Build a Docker image for reproducible, sandboxed hosting of the Hearth server. |
+| Docker | ❌ | [#284](https://github.com/hearth-rs/hearth/issues/284) | alpha | Build a Docker image for reproducible, sandboxed hosting of the Hearth server. |
 | OpenXR | ❌ | N/A | alpha | Support OpenXR as an alternative to desktop windows and expose its API to guests. |
 | Audio I/O | ❌ | N/A | alpha | Native audio input and output for all platforms. |
 | Opus | ❌ | N/A | alpha | Native Opus decoding and encoding for performance-sensitive audio compression. |

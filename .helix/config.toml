@@ -1,2 +1,2 @@
 [editor]
-workspace-lsp-roots = [".", "guest/rust/"]
+workspace-lsp-roots = [".", "guest/rust/", "kindling/", "kindling/build"]

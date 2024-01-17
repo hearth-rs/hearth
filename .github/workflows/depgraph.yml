@@ -5,28 +5,22 @@ on:
   push:
     paths: [ "**/Cargo.toml" ]
     branches: [ "main" ]
-  pull_request:
-    paths: [ "**/Cargo.toml" ]
-    branches: [ "main" ]
 
 permissions:
   contents: write
 
 jobs:
-  depgraph:
+  hearth-depgraph:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+          token: ${{ secrets.ADMIN_PAT }}
     - uses: Swatinem/rust-cache@v2.2.0
     - name: Install graphviz
       run: sudo apt install graphviz
-    - name: Install cargo-depgraph
-      uses: actions-rs/cargo@v1
-      with:
-          command: install
-          args: cargo-depgraph
     - name: Generate depgraph
-      run: cargo depgraph --workspace-only --hide hearth-core,hearth-types > depgraph.dot
+      run: cargo run -p hearth-depgraph > depgraph.dot
     - name: Visualize depgraph
       run: dot -Tpng depgraph.dot > resources/misc/depgraph.png
     - name: Commit depgraph

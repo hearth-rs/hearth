@@ -7,6 +7,6 @@ members = [
 [workspace.dependencies]
 bitflags = { version = "2.3", features = ["serde"] }
 hearth-guest = { path = "hearth-guest" }
-hearth-types = { path = "../../crates/hearth-types" }
+hearth-schema = { path = "../../core/schema" }
 serde = { version = "1.0.103, < 1.0.171", default-features = false, features = ["derive"] }
 serde_json = "1"

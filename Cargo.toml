@@ -1,27 +1,29 @@
 [workspace]
 resolver = "2"
-members = [ "crates/*" ]
+members = ["core/*", "kindling/build", "main/*", "plugins/*", "tools/*"]
 
 [workspace.dependencies]
 bytemuck = { version = "1.13", features = ["derive"] }
 flume = "0.11"
-glam = { version = "0.20", features = ["serde"] }
-hearth-cognito = { path = "crates/hearth-cognito" }
-hearth-core = { path = "crates/hearth-core" }
-hearth-daemon = { path = "crates/hearth-daemon" }
-hearth-debug-draw = { path = "crates/hearth-debug-draw" }
-hearth-init = { path = "crates/hearth-init" }
-hearth-ipc = { path = "crates/hearth-ipc" }
-hearth-fs = { path = "crates/hearth-fs" }
-hearth-macros = { path = "crates/hearth-macros" }
-hearth-network = { path = "crates/hearth-network" }
-hearth-rend3 = { path = "crates/hearth-rend3" }
-hearth-terminal = { path = "crates/hearth-terminal" }
-hearth-types = { path = "crates/hearth-types" }
-hearth-wasm = { path = "crates/hearth-wasm" }
+glam = { version = "0.20", features = ["bytemuck", "serde"] }
+hearth-canvas.path = "plugins/canvas"
+hearth-daemon.path = "plugins/daemon"
+hearth-debug-draw.path = "plugins/debug-draw"
+hearth-init.path = "plugins/init"
+hearth-ipc.path = "core/ipc"
+hearth-fs.path = "plugins/fs"
+hearth-macros.path = "core/macros"
+hearth-network.path = "plugins/network"
+hearth-rend3.path = "plugins/rend3"
+hearth-renderer.path = "plugins/renderer"
+hearth-runtime.path = "core/runtime"
+hearth-schema.path = "core/schema"
+hearth-terminal.path = "plugins/terminal"
+hearth-time.path = "plugins/time"
+hearth-wasm.path = "plugins/wasm"
+kindling-build.path = "kindling/build"
 ouroboros = "0.18.0"
 parking_lot = "0.12"
-rend3-alacritty = { path = "crates/rend3-alacritty" }
 serde_json = "1"
 tracing = "0.1.37"
 wasmtime = "11"

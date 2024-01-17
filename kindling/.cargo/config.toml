@@ -1,0 +1,2 @@
+[alias]
+build-root = "run --manifest-path build/Cargo.toml --"

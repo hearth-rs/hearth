@@ -1,0 +1,20 @@
+[package]
+name = "hearth-wasm"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+bytemuck = { workspace = true }
+futures-util = "0.3"
+hearth-macros = { workspace = true }
+hearth-runtime = { workspace = true }
+ouroboros = { workspace = true }
+serde_json = { workspace = true }
+slab = "0.4.8"
+tracing = { workspace = true }
+wasmtime = { workspace = true }
+
+[dev-dependencies]
+hearth-schema = { workspace = true }
+tokio = { version = "1.24", features = ["macros", "rt"] }

@@ -1,0 +1,16 @@
+[package]
+name = "kindling-terminal-demo"
+version = "0.1.0"
+edition = "2021"
+description = "A demonstration of Hearth's terminal emulator."
+
+[package.metadata.service]
+name = "rs.hearth.kindling.TerminalDemo"
+targets = []
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hearth-guest.workspace = true
+kindling-host.workspace = true

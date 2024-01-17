@@ -1,0 +1,15 @@
+[package]
+name = "kindling-panic-test"
+version = "0.1.0"
+edition = "2021"
+description = "A test of Hearth's panic handler"
+
+[package.metadata.service]
+name = "rs.hearth.kindling.PanicTest"
+targets = []
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hearth-guest.workspace = true

@@ -1,0 +1,5 @@
+[alias]
+build-root = "run --bin kindling-build"
+
+[env]
+CARGO_WORKSPACE_DIR = {value = "", relative = true}

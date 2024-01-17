@@ -4,23 +4,33 @@
 
 # Hearth
 
+<p align="center">
+  <a href="https://discord.gg/gzzJ3pWCft">
+    <img alt="Discord" src="https://img.shields.io/discord/1065779071008649327?logo=discord&logoColor=white&label=Discord&color=blue">
+  </a>
+  <a href="https://matrix.to/#/#hearth:leyline.witchcraft.zone">
+    <img alt="Matrix" src="https://img.shields.io/matrix/hearth%3Aleyline.witchcraft.zone?server_fqdn=matrix.leyline.witchcraft.zone&logo=matrix&logoColor=white&label=Matrix&color=silver">
+  </a>
+  <a href="https://coven.witchcraft.zone/@hearth">
+    <img alt="Fediverse" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcoven.witchcraft.zone%2Fusers%2F9lylyyd6kcmppzkm%2Ffollowers&query=totalItems&suffix=%20followers&label=Fediverse&logo=mastodon&logoColor=white">
+  </a>
+  <a href="https://www.gnu.org/licenses/why-affero-gpl.html">
+    <img alt="AGPL License" src="https://img.shields.io/badge/license-GNU%20AGPL-%23663366?logo=gnu&logoColor=white">
+  </a>
+  <img alt="Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hearth-rs/hearth/pr.yml?logo=github&logoColor=white"/>
+</p>
+
 Hearth is a shared, always-on execution environment for constructing
 3D virtual spaces from the inside.
 
 [Philosophy](#philosophy) •
 [Setup and Installation](#setup-and-installation) •
 [Design Document](/DESIGN.md) •
-[Contributing](/CONTRIBUTORS.md) •
-[Discord "server"](https://discord.gg/gzzJ3pWCft) •
-[Matrix room](https://matrix.to/#/#hearth:yoru.cafe)
+[Contributing](/CONTRIBUTORS.md)
 
 <a href="https://www.gnu.org/licenses/agpl-3.0.html">
   <img src="./resources/misc/agplv3-with-text-162x68.png"/>
 </a>
-
-Hearth's logo was created (c) 2023 by [Sasha Koshka](https://holanet.xyz) and
-is licensed under a
-[Creative Commons BY-SA 4.0 license](https://creativecommons.org/licenses/by-sa/4.0).
 
 </div>
 
@@ -163,23 +173,22 @@ Hearth's codebase is composed of a single Rust workspace divided into many
 crates, each with a dedicated purpose. Here are a few specific, important crates
 to be aware of:
 
-- **hearth-core**: a common library that provides the APIs for plugins, asset
-    loading, the lump store, and runtime building. Because the `hearth-core`
+- **hearth-runtime**: a common library that provides the APIs for plugins, asset
+    loading, the lump store, and runtime building. Because the `hearth-runtime`
     API is essential to most Hearth functionality, most crates in the Hearth
     codebase depend on it.
-- **hearth-types**: a schema crate that defines the guest-to-host message
+- **hearth-schema**: a schema crate that defines the guest-to-host message
     protocols. Since the purpose of most Hearth crates is to provide some kind
-    of native resource to guest processes, most crates depend on `hearth-types`.
+    of native resource to guest processes, most crates depend on `hearth-schema`.
 - **hearth-client** and **hearth-server**: the main Hearth application binaries,
     implementing the client and server, respectively. Each depends on a variety
     of plugin crates, since they build and run the runtimes that use those
     plugins.
 - **hearth-ctl**: a command-line IPC client to perform common operations on
-    a Hearth runtime. Only depends on `hearth-types` to define the IPC protocol
+    a Hearth runtime. Only depends on `hearth-schema` to define the IPC protocol
     and `hearth-ipc` to implement OS-specific IPC transport mechanisms.
 
 Outside of these special cases, the rest of the crates in the Hearth codebase
-implement plugins. Here's a dependency graph of the whole workspace, excluding
-`hearth-core` and `hearth-types` to declutter:
+implement plugins. Here's a dependency graph of the whole workspace:
 
 ![A dependency graph of the Hearth codebase.](resources/misc/depgraph.png)

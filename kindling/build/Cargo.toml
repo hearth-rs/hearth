@@ -1,0 +1,8 @@
+[package]
+name = "kindling-build"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cargo_metadata = "0.17"
+toml = "0.7"

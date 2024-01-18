@@ -118,6 +118,8 @@ are easily capable of hot-reload.
 
 # Client-Server Architecture
 
+> TODO: add a diagram here distinguishing host vs. guest and client vs. server
+
 Hearth has two binaries: `hearth-client` and `hearth-server`, which each
 respectively implement the Hearth client and server. Each binary packages a
 slightly different version of the Hearth runtime by including the relevant

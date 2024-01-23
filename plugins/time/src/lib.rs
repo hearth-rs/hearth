@@ -17,9 +17,9 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 use hearth_runtime::{
-    async_trait, cargo_process_metadata,
+    async_trait,
     flue::Table,
-    process::ProcessMetadata,
+    hearth_macros::GetProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     tokio::{
         self,
@@ -49,6 +49,7 @@ impl Plugin for TimePlugin {
 
 /// Receives a single floating-point number as a request, waits the value of
 /// the number in seconds, then responds with an empty message.
+#[derive(GetProcessMetadata)]
 pub struct SleepService;
 
 #[async_trait]
@@ -79,14 +80,11 @@ impl SinkProcess for SleepService {
 
 impl ServiceRunner for SleepService {
     const NAME: &'static str = "hearth.Sleep";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        cargo_process_metadata!()
-    }
 }
 
 /// Responds to empty request messages with a capability to a new instance of
 /// a [Timer].
+#[derive(GetProcessMetadata)]
 pub struct TimerFactory;
 
 #[async_trait]
@@ -98,12 +96,9 @@ impl RequestResponseProcess for TimerFactory {
         &'a mut self,
         request: &mut RequestInfo<'a, Self::Request>,
     ) -> ResponseInfo<'a, Self::Response> {
-        let mut meta = cargo_process_metadata!();
-        meta.name = Some("Timer".to_string());
-
         let last_request = Instant::now();
         let timer = Timer { last_request };
-        let child = request.spawn(meta, timer);
+        let child = request.spawn(timer);
 
         ResponseInfo {
             data: (),
@@ -114,10 +109,6 @@ impl RequestResponseProcess for TimerFactory {
 
 impl ServiceRunner for TimerFactory {
     const NAME: &'static str = "hearth.TimerFactory";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        cargo_process_metadata!()
-    }
 }
 
 /// Waits a given interval beginning precisely from the end of the last wait.
@@ -130,6 +121,7 @@ impl ServiceRunner for TimerFactory {
 /// function entirely on their internal clock and thus eliminate potential
 /// round-trip time between requests and responses accumulating over multiple
 /// sleep requests.
+#[derive(GetProcessMetadata)]
 pub struct Timer {
     last_request: Instant,
 }
@@ -156,6 +148,7 @@ impl RequestResponseProcess for Timer {
 
 /// Responds to empty request messages with a capability to a new instance of
 /// a [Stopwatch].
+#[derive(GetProcessMetadata)]
 pub struct StopwatchFactory;
 
 #[async_trait]
@@ -167,12 +160,9 @@ impl RequestResponseProcess for StopwatchFactory {
         &'a mut self,
         request: &mut RequestInfo<'a, Self::Request>,
     ) -> ResponseInfo<'a, Self::Response> {
-        let mut meta = cargo_process_metadata!();
-        meta.name = Some("Stopwatch".to_string());
-
         let last_request = Instant::now();
         let timer = Stopwatch { last_request };
-        let child = request.spawn(meta, timer);
+        let child = request.spawn(timer);
 
         ResponseInfo {
             data: (),
@@ -183,14 +173,11 @@ impl RequestResponseProcess for StopwatchFactory {
 
 impl ServiceRunner for StopwatchFactory {
     const NAME: &'static str = "hearth.StopwatchFactory";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        cargo_process_metadata!()
-    }
 }
 
 /// Responds to empty request messages with a floating-point number that
 /// represents the time in seconds since the last request.
+#[derive(GetProcessMetadata)]
 pub struct Stopwatch {
     last_request: Instant,
 }

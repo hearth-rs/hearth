@@ -18,7 +18,10 @@
 
 use super::*;
 
-use hearth_guest::{registry, Capability};
+use hearth_guest::{
+    registry::{self, RegistryRequest, RegistryResponse},
+    Capability,
+};
 
 /// A wrapper for capabilities implementing the [registry] protocol.
 pub type Registry = RequestResponse<registry::RegistryRequest, registry::RegistryResponse>;
@@ -41,6 +44,15 @@ impl Registry {
         } else {
             None
         }
+    }
+
+    /// Lists all services in this registry.
+    pub fn list_services(&self) -> Vec<String> {
+        let (data, _) = self.request(RegistryRequest::List, &[]);
+        let RegistryResponse::List(list) = data else {
+            panic!("failed to list services");
+        };
+        list
     }
 }
 

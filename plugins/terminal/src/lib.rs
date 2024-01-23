@@ -21,8 +21,8 @@ use std::sync::Arc;
 use draw::{TerminalDrawState, TerminalPipelines};
 use hearth_rend3::*;
 use hearth_runtime::{
-    async_trait, cargo_process_metadata,
-    process::ProcessMetadata,
+    async_trait,
+    hearth_macros::GetProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     utils::*,
@@ -48,11 +48,12 @@ pub struct TerminalWrapper {
 
 impl TerminalWrapper {
     /// Updates this terminal's draw state. Returns true if this terminal has not quit.
-    pub fn update(&mut self) -> bool {
+    pub fn update(&mut self, pipelines: &TerminalPipelines) -> bool {
         let quit = self.terminal.should_quit();
 
         if !quit {
-            self.terminal.update_draw_state(&mut self.draw_state);
+            self.terminal
+                .update_draw_state(pipelines, &mut self.draw_state);
         }
 
         !quit
@@ -89,7 +90,7 @@ impl Routine for TerminalRoutine {
         }
 
         // update draw states and remove terminals that have quit
-        self.terminals.retain_mut(TerminalWrapper::update);
+        self.terminals.retain_mut(|t| t.update(&self.pipelines));
 
         Box::new(TerminalNode {
             pipelines: &self.pipelines,
@@ -112,7 +113,8 @@ impl<'a> Node<'a> for TerminalNode<'a> {
     }
 }
 
-/// Guest-exposed terminal process.
+/// An instance of a terminal. Accepts TerminalUpdate.
+#[derive(GetProcessMetadata)]
 pub struct TerminalSink {
     inner: Arc<Terminal>,
 }
@@ -142,7 +144,8 @@ impl SinkProcess for TerminalSink {
     }
 }
 
-/// Guest-exposed service plugin.
+/// The native terminal emulator factory service. Accepts FactoryRequest.
+#[derive(GetProcessMetadata)]
 pub struct TerminalFactory {
     fonts: FontSet<Arc<FaceAtlas>>,
     new_terminals_tx: UnboundedSender<Arc<Terminal>>,
@@ -167,14 +170,7 @@ impl RequestResponseProcess for TerminalFactory {
         let terminal = Terminal::new(config, state.clone());
         let _ = self.new_terminals_tx.send(terminal.clone());
 
-        // create metadata for the child TerminalSink since it's a sink, not a
-        // service, and it doesn't have get_process_metadata()
-        let mut meta = cargo_process_metadata!();
-        meta.name = Some("TerminalSink".to_string());
-        meta.description = Some("An instance of a terminal. Accepts TerminalUpdate.".to_string());
-
-        let sink = TerminalSink { inner: terminal };
-        let child = request.spawn(meta, sink);
+        let child = request.spawn(TerminalSink { inner: terminal });
 
         ResponseInfo {
             data: Ok(FactorySuccess::Terminal),
@@ -185,15 +181,6 @@ impl RequestResponseProcess for TerminalFactory {
 
 impl ServiceRunner for TerminalFactory {
     const NAME: &'static str = "hearth.terminal.TerminalFactory";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-        meta.description = Some(
-            "The native terminal emulator factory service. Accepts FactoryRequest.".to_string(),
-        );
-
-        meta
-    }
 }
 
 #[derive(Default)]

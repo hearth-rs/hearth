@@ -202,11 +202,8 @@ impl RuntimeBuilder {
         self.services.insert(name.clone());
 
         self.add_runner(move |runtime| {
-            tokio::spawn(async move {
-                debug!("Spawning '{}' service", name);
-                let _ = service_start_tx.send(name.clone());
-                process.run(name, runtime, &ctx).await;
-            });
+            let _ = service_start_tx.send(name.clone());
+            process.spawn(name, runtime, ctx);
         });
 
         self
@@ -279,14 +276,7 @@ impl RuntimeBuilder {
             registry: registry.clone(),
         });
 
-        tokio::spawn({
-            let runtime = runtime.clone();
-            async move {
-                registry_inner
-                    .run("Registry".to_string(), runtime, &registry)
-                    .await;
-            }
-        });
+        registry_inner.spawn("Registry".to_string(), runtime.clone(), registry);
 
         debug!("Running runners");
         for runner in self.runners {

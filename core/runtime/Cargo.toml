@@ -12,6 +12,7 @@ bytes = "1.3"
 directories = "4"
 flue = "0.2.1"
 flume = { workspace = true }
+hearth-macros = { workspace = true }
 hearth-schema = { workspace = true }
 ouroboros = { workspace = true }
 parking_lot = { workspace = true }

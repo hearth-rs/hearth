@@ -9,3 +9,4 @@ glam = "0.20"
 hearth-guest.workspace = true
 lazy_static.workspace = true
 serde.workspace = true
+tracing.workspace = true

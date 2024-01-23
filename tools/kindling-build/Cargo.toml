@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 cargo_metadata = "0.17"
+serde_json.workspace = true
 toml = "0.7"

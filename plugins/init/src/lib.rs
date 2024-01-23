@@ -25,7 +25,7 @@ use hearth_runtime::{
     process::{Process, ProcessMetadata},
     runtime::{Plugin, Runtime, RuntimeBuilder},
     tokio::{spawn, sync::oneshot::Sender},
-    utils::ProcessRunner,
+    utils::{ProcessRunToken, ProcessRunner},
 };
 use tracing::{debug, warn};
 
@@ -36,7 +36,13 @@ struct Hook {
 
 #[async_trait]
 impl ProcessRunner for Hook {
-    async fn run(mut self, label: String, _runtime: Arc<Runtime>, ctx: &Process) {
+    async fn run(
+        mut self,
+        label: String,
+        _runtime: Arc<Runtime>,
+        ctx: &Process,
+        _: ProcessRunToken,
+    ) {
         // handles incoming signals. returns None until a valid hook message arrives.
         let on_recv = |signal: TableSignal<'_>| {
             let TableSignal::Message { data: _, caps } = signal else {

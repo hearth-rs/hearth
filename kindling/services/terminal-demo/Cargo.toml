@@ -7,6 +7,7 @@ description = "A demonstration of Hearth's terminal emulator."
 [package.metadata.service]
 name = "rs.hearth.kindling.TerminalDemo"
 targets = []
+dependencies.need = ["hearth.Window", "hearth.terminal.TerminalFactory", "hearth.Sleep"]
 
 [lib]
 crate-type = ["cdylib"]

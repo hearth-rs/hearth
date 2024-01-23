@@ -50,8 +50,9 @@ pub mod prelude {
         time::{sleep, Stopwatch, Timer},
         wasm::{spawn_fn, spawn_mod},
         window::MAIN_WINDOW,
-        RequestResponse, {debug, error, info, log, trace, warning},
+        RequestResponse,
     };
+    pub use tracing::{debug, error, info, trace, warn};
 }
 
 /// A helper struct for request-response capabilities.
@@ -93,60 +94,19 @@ where
         caps.push(&reply_cap);
         caps.extend_from_slice(args);
 
-        self.cap.send_json(&request, caps.as_slice());
+        self.cap.send(&request, caps.as_slice());
 
-        reply.recv_json()
+        reply.recv()
     }
-}
 
-/// Takes a `ProcessLogLevel` and a format string and prints it to the terminal.
-#[macro_export]
-macro_rules! log {
-    ($level:expr, $($arg:tt)*) => {
-        ::hearth_guest::log(
-            $level,
-            ::core::module_path!(),
-            &format!($($arg)*),
+    /// Retrieves a [RequestResponse] service from [registry::REGISTRY] by name.
+    ///
+    /// Panics if the service is unavailable.
+    pub fn expect_service(name: &str) -> Self {
+        Self::new(
+            registry::REGISTRY
+                .get_service(name)
+                .unwrap_or_else(|| panic!("requested service {name:?} is unavailable")),
         )
     }
-}
-
-/// Prints a `Trace` level log message to the terminal.
-#[macro_export]
-macro_rules! trace {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Trace, $($arg)*);
-    };
-}
-
-/// Prints a `Debug` level log message to the terminal.
-#[macro_export]
-macro_rules! debug {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Debug, $($arg)*);
-    };
-}
-
-/// Prints an `Info` level log message to the terminal.
-#[macro_export]
-macro_rules! info {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Info, $($arg)*);
-    };
-}
-
-/// Prints a `Warning` level log message to the terminal.
-#[macro_export]
-macro_rules! warning {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Warning, $($arg)*);
-    };
-}
-
-/// Prints a `Error` level log message to the terminal.
-#[macro_export]
-macro_rules! error {
-    ($($arg:tt)*) => {
-        log!(::hearth_guest::ProcessLogLevel::Error, $($arg)*);
-    };
 }

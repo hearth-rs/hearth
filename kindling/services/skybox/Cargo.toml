@@ -7,6 +7,7 @@ description = "Sets the skybox to a hardcoded cube texture"
 [package.metadata.service]
 name = "rs.hearth.kindling.Skybox"
 targets = []
+dependencies.need = ["hearth.Renderer"]
 
 [lib]
 crate-type = ["cdylib"]

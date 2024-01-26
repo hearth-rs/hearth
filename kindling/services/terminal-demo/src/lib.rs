@@ -19,10 +19,7 @@
 use std::collections::HashMap;
 
 use hearth_guest::{terminal::TerminalState, Color};
-use kindling_host::prelude::{
-    glam::{vec3, Mat4, Vec3},
-    *,
-};
+use kindling_host::prelude::*;
 
 hearth_guest::export_metadata!();
 
@@ -58,12 +55,6 @@ pub extern "C" fn run() {
         // forget the terminals so that they dont drop when this function exits
         std::mem::forget(term);
     }
-
-    MAIN_WINDOW.set_camera(
-        90.0,
-        0.01,
-        Mat4::look_at_rh(vec3(0.3, 0.3, 3.0), Vec3::ZERO, Vec3::Y),
-    );
 }
 
 /// Helper struct for containing and identifying terminal colors.

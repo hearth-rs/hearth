@@ -20,6 +20,7 @@ use std::{collections::HashMap, f32::consts::FRAC_PI_2};
 
 use hearth_guest::{
     debug_draw::{DebugDrawMesh, DebugDrawVertex},
+    export_metadata,
     window::*,
     Color,
 };
@@ -28,6 +29,8 @@ use kindling_host::prelude::{
     *,
 };
 use rapier3d::{geometry::ColliderSet, parry::query::Ray, pipeline::QueryPipeline, prelude::*};
+
+export_metadata!();
 
 struct PhysicsWorld {
     bodies: RigidBodySet,
@@ -174,7 +177,7 @@ pub extern "C" fn run() {
     MAIN_WINDOW.cursor_grab_mode(CursorGrabMode::Locked);
 
     loop {
-        let (event, _) = events.recv_json::<WindowEvent>();
+        let (event, _) = events.recv::<WindowEvent>();
         flycam.on_event(event);
 
         let (origin, direction) = flycam.cast_ray();

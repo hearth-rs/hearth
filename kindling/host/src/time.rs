@@ -19,17 +19,15 @@
 use super::*;
 
 lazy_static::lazy_static! {
-    static ref SLEEP_SERVICE: Capability = {
-        registry::REGISTRY.get_service("hearth.Sleep").unwrap()
-    };
+    static ref SLEEP_SERVICE: Capability =
+        registry::REGISTRY.get_service("hearth.Sleep")
+            .expect("requested service \"hearth.Sleep\" is unavailable");
 
-    static ref TIMER_FACTORY: RequestResponse<(), ()> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.TimerFactory").unwrap())
-    };
+    static ref TIMER_FACTORY: RequestResponse<(), ()> =
+        RequestResponse::expect_service("hearth.TimerFactory");
 
-    static ref STOPWATCH_FACTORY: RequestResponse<(), ()> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.StopwatchFactory").unwrap())
-    };
+    static ref STOPWATCH_FACTORY: RequestResponse<(), ()> =
+        RequestResponse::expect_service("hearth.StopwatchFactory");
 }
 
 /// Sleeps for the given time in seconds.
@@ -38,9 +36,9 @@ pub fn sleep(duration: f32) {
     let reply_cap = reply.make_capability(Permissions::SEND);
     reply.monitor(&SLEEP_SERVICE);
 
-    SLEEP_SERVICE.send_json(&duration, &[&reply_cap]);
+    SLEEP_SERVICE.send(&duration, &[&reply_cap]);
 
-    let _ = reply.recv();
+    let _ = reply.recv_raw();
 }
 
 pub struct Timer(RequestResponse<f32, ()>);

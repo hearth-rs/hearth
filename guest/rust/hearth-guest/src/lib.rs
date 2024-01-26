@@ -20,11 +20,14 @@
 
 #![warn(missing_docs)]
 
+mod subscriber;
+
 use std::borrow::Borrow;
 
 use serde::{Deserialize, Serialize};
 
 pub use hearth_schema::*;
+use subscriber::ProcessSubscriber;
 
 /// Internal helper function to turn a string into a pointer and length.
 fn abi_string(str: &str) -> (u32, u32) {
@@ -77,8 +80,15 @@ impl Capability {
         Capability(handle)
     }
 
-    /// Sends a message to this capability.
-    pub fn send(&self, data: &[u8], caps: &[&Capability]) {
+    /// Sends a type, serialized as JSON, to this capability.
+    pub fn send(&self, data: &impl Serialize, caps: &[&Capability]) {
+        let json_msg = serde_json::to_string(data).unwrap();
+        let bytes_msg = json_msg.into_bytes();
+        self.send_raw(&bytes_msg, &caps);
+    }
+
+    /// Sends a raw message to this capability.
+    pub fn send_raw(&self, data: &[u8], caps: &[&Capability]) {
         let caps: Vec<u32> = caps.iter().map(|cap| (*cap).borrow().0).collect();
         unsafe {
             abi::table::send(
@@ -89,12 +99,6 @@ impl Capability {
                 caps.len() as u32,
             );
         }
-    }
-
-    /// Sends a type, serialized as JSON, to this capability.
-    pub fn send_json(&self, data: &impl Serialize, caps: &[&Capability]) {
-        let msg = serde_json::to_string(data).unwrap();
-        self.send(&msg.into_bytes(), caps);
     }
 
     /// Kills this capability.
@@ -191,23 +195,10 @@ impl Mailbox {
     }
 
     /// Wait for this mailbox to receive a [Signal].
-    pub fn recv(&self) -> Signal {
+    pub fn recv_signal(&self) -> Signal {
         unsafe {
             let handle = abi::mailbox::recv(self.0);
             Signal::from_handle(handle)
-        }
-    }
-
-    /// Check if this mailbox has received any signals without waiting.
-    pub fn try_recv(&self) -> Option<Signal> {
-        unsafe {
-            let handle = abi::mailbox::try_recv(self.0);
-
-            if handle == u32::MAX {
-                None
-            } else {
-                Some(Signal::from_handle(handle))
-            }
         }
     }
 
@@ -224,18 +215,66 @@ impl Mailbox {
 
     /// Receives a JSON message. Panics if the next signal isn't a message or
     /// if deserialization fails.
-    pub fn recv_json<T>(&self) -> (T, Vec<Capability>)
+    pub fn recv<T>(&self) -> (T, Vec<Capability>)
     where
         T: for<'a> Deserialize<'a>,
     {
-        let signal = self.recv();
+        let (bytes_data, caps) = self.recv_raw();
+        let json_data = serde_json::from_slice(&bytes_data).unwrap();
+        (json_data, caps)
+    }
+
+    /// Receives a raw bytes message. Panics if the next signal isn't a message or
+    /// if deserialization fails.
+    pub fn recv_raw(&self) -> (Vec<u8>, Vec<Capability>) {
+        let signal = self.recv_signal();
 
         let Signal::Message(msg) = signal else {
             panic!("expected message, received {:?}", signal);
         };
 
-        let data = serde_json::from_slice(&msg.data).unwrap();
-        (data, msg.caps)
+        (msg.data, msg.caps)
+    }
+
+    /// Check if this mailbox has received any signals without waiting.
+    pub fn try_recv_signal(&self) -> Option<Signal> {
+        unsafe {
+            let handle = abi::mailbox::try_recv(self.0);
+
+            if handle == u32::MAX {
+                None
+            } else {
+                Some(Signal::from_handle(handle))
+            }
+        }
+    }
+
+    /// Check if this mailbox has received any signals without waiting
+    /// and return None if signal was not a message or it was down.
+    pub fn try_recv_raw(&self) -> Option<(Vec<u8>, Vec<Capability>)> {
+        let signal = self.try_recv_signal();
+
+        match signal {
+            Some(Signal::Message(msg)) => Some((msg.data, msg.caps)),
+            Some(Signal::Down { subject }) => {
+                panic!("received down signal on subject {:?}", subject)
+            }
+            None => None,
+        }
+    }
+
+    /// Check if this mailbox has received any signals without waiting
+    /// and return None if there was either no signal, it was down,
+    /// or there was an error while processing json.
+    pub fn try_recv<T>(&self) -> Option<(T, Vec<Capability>)>
+    where
+        T: for<'a> Deserialize<'a>,
+    {
+        let msg = self.try_recv_raw()?;
+
+        let data = serde_json::from_slice(&msg.0).unwrap();
+
+        Some((data, msg.1))
     }
 }
 
@@ -483,6 +522,10 @@ extern "C" fn _hearth_init() {
         let log_message = format!("panicked at '{msg}', {location}");
         log(ProcessLogLevel::Error, "panic", &log_message);
     }));
+
+    // initialize tracing subscriber
+    let subscriber = ProcessSubscriber::new();
+    tracing::subscriber::set_global_default(subscriber).expect("failed to set subscriber");
 }
 
 #[no_mangle]

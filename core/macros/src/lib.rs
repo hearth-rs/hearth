@@ -19,9 +19,82 @@
 use proc_macro2::{Literal, Span, TokenStream};
 use quote::quote;
 use syn::{
-    parse_macro_input, AttributeArgs, FnArg, Ident, ImplItem, ImplItemMethod, Meta, MetaNameValue,
-    NestedMeta, Pat, PatIdent, Type,
+    parse_macro_input, AttributeArgs, DeriveInput, FnArg, Ident, ImplItem, ImplItemMethod, Meta,
+    MetaNameValue, NestedMeta, Pat, PatIdent, Type,
 };
+
+/// Helper macro to implement [GetProcessMetadata] using doc comments and Cargo environment variables.
+///
+/// The `description` field is initialized with the type's doc comments.
+///
+/// The `name` field is initialized with the type's name.
+///
+/// The following [ProcessMetadata] fields are initialized with corresponding `CARGO_PKG_*` environment variables:
+/// - `authors`: `CARGO_PKG_AUTHORS`
+/// - `repository`: `CARGO_PKG_REPOSITORY`
+/// - `homepage`: `CARGO_PKG_HOMEPAGE`
+/// - `license`: `CARGO_PKG_LICENSE`
+#[proc_macro_derive(GetProcessMetadata)]
+pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let DeriveInput { ident, attrs, .. } = parse_macro_input!(input as DeriveInput);
+
+    let name = ident.to_string();
+
+    let mut docs = String::new();
+
+    for attr in attrs.iter() {
+        if !attr.path.is_ident("doc") {
+            continue;
+        }
+
+        let Ok(meta) = attr.parse_meta() else {
+            continue;
+        };
+
+        let Meta::NameValue(meta) = meta else {
+            continue;
+        };
+
+        let syn::Lit::Str(doc) = meta.lit else {
+            continue;
+        };
+
+        docs.push_str(doc.value().trim());
+        docs.push('\n');
+    }
+
+    let docs = docs.trim();
+
+    quote! {
+        impl ::hearth_runtime::utils::GetProcessMetadata for #ident {
+            fn get_process_metadata() -> ::hearth_runtime::process::ProcessMetadata {
+                let mut meta = ::hearth_runtime::process::ProcessMetadata::default();
+
+                meta.name = Some(#name.to_string());
+                meta.description = Some(#docs.to_string());
+
+                // returns `None` if the string is empty, or `Some(str)` otherwise.
+                let some_or_empty = |str: &str| {
+                    if str.is_empty() {
+                        None
+                    } else {
+                        Some(str.to_string())
+                    }
+                };
+
+                meta.authors = some_or_empty(env!("CARGO_PKG_AUTHORS"))
+                    .map(|authors| authors.split(':').map(ToString::to_string).collect());
+
+                meta.repository = some_or_empty(env!("CARGO_PKG_REPOSITORY"));
+                meta.homepage = some_or_empty(env!("CARGO_PKG_HOMEPAGE"));
+                meta.license = some_or_empty(env!("CARGO_PKG_LICENSE"));
+
+                meta
+            }
+        }
+    }
+    .into()
+}
 
 #[proc_macro_attribute]
 pub fn impl_wasm_linker(

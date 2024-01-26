@@ -27,10 +27,10 @@ use hearth_rend3::{
     wgpu, FrameRequest, Rend3Plugin,
 };
 use hearth_runtime::{
-    async_trait, cargo_process_metadata,
+    async_trait,
     flue::{CapabilityRef, Permissions},
+    hearth_macros::GetProcessMetadata,
     hearth_schema::window::*,
-    process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     utils::{MessageInfo, PubSub, ServiceRunner, SinkProcess},
 };
@@ -66,6 +66,9 @@ pub enum WindowRxMessage {
         /// The camera's view matrix.
         view: Mat4,
     },
+
+    /// Broadcast the current state of the window to all event subscribers.
+    BroadcastState,
 
     /// The window is requested to quit.
     Quit,
@@ -295,6 +298,18 @@ impl Window {
     pub fn notify_event(&self, event: WindowEvent) {
         let _ = self.events_tx.send(event);
     }
+
+    pub fn broadcast_state(&self) {
+        let size = self.window.inner_size();
+        let size = uvec2(size.width, size.height);
+        self.notify_event(WindowEvent::Resized(size));
+
+        let scale_factor = self.window.scale_factor();
+        self.notify_event(WindowEvent::ScaleFactorChanged {
+            scale_factor,
+            new_inner_size: size,
+        });
+    }
 }
 
 pub struct WindowCtx {
@@ -361,6 +376,7 @@ impl WindowCtx {
                             view,
                         }
                     }
+                    WindowRxMessage::BroadcastState => window.broadcast_state(),
                     WindowRxMessage::Quit => control_flow.set_exit(),
                 },
                 _ => (),
@@ -395,7 +411,8 @@ impl Plugin for WindowPlugin {
     }
 }
 
-/// A service that implements the windowing protocol using winit.
+/// The native window service. Accepts WindowRequest.
+#[derive(GetProcessMetadata)]
 pub struct WindowService {
     incoming: EventLoopProxy<WindowRxMessage>,
     pubsub: Arc<PubSub<WindowEvent>>,
@@ -423,6 +440,8 @@ impl SinkProcess for WindowService {
                 }
 
                 self.pubsub.subscribe(sub.clone());
+
+                send(WindowRxMessage::BroadcastState);
             }
             Unsubscribe => {
                 let Some(sub) = message.caps.get(0) else {
@@ -446,12 +465,6 @@ impl SinkProcess for WindowService {
 
 impl ServiceRunner for WindowService {
     const NAME: &'static str = SERVICE_NAME;
-
-    fn get_process_metadata() -> ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-        meta.description = Some("The native window service. Accepts WindowRequest.".to_string());
-        meta
-    }
 }
 
 fn conv_element_state(state: winit::event::ElementState) -> ElementState {

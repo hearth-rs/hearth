@@ -331,7 +331,9 @@ impl rend3_framework::App for Demo {
                     surface: Arc::clone(surface.unwrap()),
                 };
 
-                inner.terminal.update_draw_state(&mut inner.draw_state);
+                inner
+                    .terminal
+                    .update_draw_state(&inner.pipelines, &mut inner.draw_state);
 
                 let pbr_routine = rend3_framework::lock(&routines.pbr);
                 let mut skybox_routine = rend3_framework::lock(&routines.skybox);

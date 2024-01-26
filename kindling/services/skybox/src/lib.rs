@@ -17,7 +17,7 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 use hearth_guest::{renderer::*, Lump};
-use kindling_host::prelude::{RequestResponse, REGISTRY};
+use kindling_host::prelude::RequestResponse;
 
 type Renderer = RequestResponse<RendererRequest, RendererResponse>;
 
@@ -47,7 +47,7 @@ pub extern "C" fn run() {
     )
     .get_id();
 
-    let renderer = Renderer::new(REGISTRY.get_service("hearth.Renderer").unwrap());
+    let renderer = Renderer::expect_service("hearth.Renderer");
     let (result, _) = renderer.request(RendererRequest::SetSkybox { texture }, &[]);
     result.unwrap();
 }

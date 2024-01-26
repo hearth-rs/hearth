@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
-use glam::Mat4;
+use glam::{Mat4, UVec2, Vec2};
 use hearth_rend3::{
     rend3::graph::{
         DepthHandle, RenderGraph, RenderPassDepthTarget, RenderPassTarget, RenderPassTargets,
@@ -35,6 +35,15 @@ use crate::text::{FaceAtlas, FontSet};
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct CameraUniform {
     pub mvp: glam::Mat4,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct GridUniform {
+    pub mvp: glam::Mat4,
+    pub size: glam::Vec2,
+    pub tex_range: glam::Vec2,
+    pub tex_size: glam::Vec4,
 }
 
 #[repr(C)]
@@ -100,9 +109,11 @@ pub struct TerminalPipelines {
     device: Arc<Device>,
     queue: Arc<Queue>,
     camera_bgl: BindGroupLayout,
+    grid_bgl: BindGroupLayout,
     glyph_bgl: BindGroupLayout,
     solid_pipeline: RenderPipeline,
     glyph_pipeline: RenderPipeline,
+    grid_pipeline: RenderPipeline,
     atlas_sampler: Sampler,
 }
 
@@ -141,6 +152,38 @@ impl TerminalPipelines {
                 },
                 BindGroupLayoutEntry {
                     binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        let grid_bgl = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Alacritty grid bind group layout"),
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX_FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: TextureViewDimension::D2,
+                        sample_type: TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 2,
                     visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Sampler(SamplerBindingType::Filtering),
                     count: None,
@@ -207,6 +250,51 @@ impl TerminalPipelines {
             GlyphVertex::LAYOUT,
         );
 
+        let grid_shader = device.create_shader_module(&include_wgsl!("grid.wgsl"));
+
+        let grid_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("AlacrittyRoutine grid pipeline layout"),
+            bind_group_layouts: &[&grid_bgl],
+            push_constant_ranges: &[],
+        });
+
+        let grid_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("AlacrittyRoutine grid pipeline"),
+            layout: Some(&grid_layout),
+            vertex: VertexState {
+                module: &grid_shader,
+                entry_point: "grid_vs",
+                buffers: &[],
+            },
+            depth_stencil: Some(DepthStencilState {
+                format: TextureFormat::Depth32Float,
+                depth_write_enabled: false,
+                depth_compare: CompareFunction::GreaterEqual,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleStrip,
+                strip_index_format: None,
+                front_face: FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: PolygonMode::Fill,
+                conservative: false,
+            },
+            multisample: MultisampleState::default(),
+            fragment: Some(FragmentState {
+                module: &grid_shader,
+                entry_point: "grid_fs",
+                targets: &[ColorTargetState {
+                    format,
+                    blend: Some(BlendState::ALPHA_BLENDING),
+                    write_mask: ColorWrites::COLOR,
+                }],
+            }),
+            multiview: None,
+        });
+
         let atlas_sampler = device.create_sampler(&SamplerDescriptor {
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
@@ -222,8 +310,10 @@ impl TerminalPipelines {
             queue,
             camera_bgl,
             glyph_bgl,
+            grid_bgl,
             solid_pipeline,
             glyph_pipeline,
+            grid_pipeline,
             atlas_sampler,
         }
     }
@@ -288,15 +378,31 @@ impl TerminalPipelines {
             bytemuck::cast_slice(&[CameraUniform { mvp: vp * model }]),
         );
 
+        self.queue.write_buffer(
+            &terminal.grid_buffer,
+            0,
+            bytemuck::cast_slice(&[GridUniform {
+                mvp: vp * model,
+                size: terminal.grid_half_size,
+                tex_range: terminal.grid_size.as_vec2() / terminal.grid_capacity.as_vec2(),
+                tex_size: terminal.grid_capacity.as_vec2().extend(0.0).extend(0.0),
+            }]),
+        );
+
+        // set the grid pipeline
+        rpass.set_pipeline(&self.grid_pipeline);
+
+        // set the grid bind group
+        rpass.set_bind_group(0, &terminal.grid_bind_group, &[]);
+
+        // draw the grid
+        rpass.draw(0..4, 0..1);
+
         // set the camera bind group for all draw calls
         rpass.set_bind_group(0, &terminal.camera_bind_group, &[]);
 
         // set the regular glyph bind group for solid geo drawing
         rpass.set_bind_group(1, &terminal.glyph_bind_groups.regular, &[]);
-
-        // draw solid geo
-        rpass.set_pipeline(&self.solid_pipeline);
-        terminal.bg_mesh.draw(rpass);
 
         // set the glyph pipeline for all glyph draws
         rpass.set_pipeline(&self.glyph_pipeline);
@@ -330,13 +436,62 @@ pub struct TerminalDrawState {
     pub model: Mat4,
     pub camera_buffer: Buffer,
     pub camera_bind_group: BindGroup,
+    pub grid_buffer: Buffer,
+    pub grid_texture: Texture,
+    pub grid_bind_group: BindGroup,
+    pub grid_size: UVec2,
+    pub grid_capacity: UVec2,
+    pub grid_half_size: Vec2,
     pub glyph_bind_groups: FontSet<BindGroup>,
-    pub bg_mesh: DynamicMesh<SolidVertex>,
     pub glyph_meshes: FontSet<DynamicMesh<GlyphVertex>>,
     pub overlay_mesh: DynamicMesh<SolidVertex>,
 }
 
 impl TerminalDrawState {
+    /// Creates a grid texture and bind group.
+    pub fn make_grid(
+        pipelines: &TerminalPipelines,
+        grid_buffer: &Buffer,
+        size: UVec2,
+    ) -> (Texture, BindGroup) {
+        let grid_texture = pipelines.device.create_texture(&TextureDescriptor {
+            label: Some("Alacritty terminal grid texture"),
+            size: Extent3d {
+                width: size.x,
+                height: size.y,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8UnormSrgb,
+            usage: TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
+        });
+
+        let grid_bind_group = pipelines.device.create_bind_group(&BindGroupDescriptor {
+            label: Some("Alacritty terminal grid bind group"),
+            layout: &pipelines.grid_bgl,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: grid_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::TextureView(
+                        &grid_texture.create_view(&Default::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::Sampler(&pipelines.atlas_sampler),
+                },
+            ],
+        });
+
+        (grid_texture, grid_bind_group)
+    }
+
     pub fn new(pipelines: &TerminalPipelines, fonts: FontSet<Arc<FaceAtlas>>) -> Self {
         let device = pipelines.device.as_ref();
 
@@ -355,6 +510,18 @@ impl TerminalDrawState {
                 resource: camera_buffer.as_entire_binding(),
             }],
         });
+
+        let grid_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some("Alacritty terminal grid buffer"),
+            size: std::mem::size_of::<GridUniform>() as BufferAddress,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let grid_size = UVec2::ZERO;
+        let grid_capacity = UVec2::splat(128);
+        let (grid_texture, grid_bind_group) =
+            Self::make_grid(pipelines, &grid_buffer, grid_capacity);
 
         let glyph_bind_groups = fonts.map(|font| {
             let atlas_view = font.texture.create_view(&Default::default());
@@ -389,7 +556,12 @@ impl TerminalDrawState {
             model: Mat4::IDENTITY,
             camera_buffer,
             camera_bind_group,
-            bg_mesh: DynamicMesh::new(device, Some("Alacritty background mesh".into())),
+            grid_buffer,
+            grid_texture,
+            grid_bind_group,
+            grid_size,
+            grid_capacity,
+            grid_half_size: Vec2::ZERO,
             glyph_meshes,
             overlay_mesh: DynamicMesh::new(device, Some("Alacritty overlay mesh".into())),
             glyph_bind_groups,

@@ -22,9 +22,8 @@ use core::panic;
 use hearth_guest::{fs::*, Lump, LumpId};
 
 lazy_static::lazy_static! {
-    static ref FILESYSTEM: RequestResponse<Request, Response> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.fs.Filesystem").unwrap())
-    };
+    static ref FILESYSTEM: RequestResponse<Request, Response> =
+        RequestResponse::expect_service("hearth.fs.Filesystem");
 }
 
 /// Get a LumpId of a file from a path.

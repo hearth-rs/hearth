@@ -97,7 +97,7 @@ impl PanelManager {
             let n = panel.transform.orientation.mul_vec3(Vec3::Z);
 
             // distance from ray origin to plane
-            let d = (cursor.origin - panel.transform.position).dot(n);
+            let d = (panel.transform.position - cursor.origin).dot(n);
 
             // rate of distance change along ray direction
             let rd = cursor.dir.dot(n);

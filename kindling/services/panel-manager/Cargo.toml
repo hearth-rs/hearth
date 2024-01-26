@@ -1,0 +1,16 @@
+[package]
+name = "kindling-panel-manager"
+version = "0.1.0"
+edition = "2021"
+description = "Kindling's core panel manager."
+
+[package.metadata.service]
+name = "rs.hearth.kindling.PanelManager"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+glam.workspace = true
+hearth-guest.workspace = true
+kindling-schema.workspace = true

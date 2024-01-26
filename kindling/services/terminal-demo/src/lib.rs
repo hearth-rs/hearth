@@ -18,42 +18,92 @@
 
 use std::collections::HashMap;
 
-use hearth_guest::{terminal::TerminalState, Color};
+use hearth_guest::{terminal::TerminalState, Color, Mailbox, Permissions, Signal};
 use kindling_host::prelude::*;
+use kindling_schema::panel::{PanelEvent, PanelManagerRequest, PanelTransform};
 
 hearth_guest::export_metadata!();
 
 #[no_mangle]
 pub extern "C" fn run() {
+    // function to transform a terminal panel at the given grid coordinates
+    let make_transform = |x, y| PanelTransform {
+        position: (x as f32 * 2.8 - 1.4, y as f32 * 2.8 - 1.4, 0.0).into(),
+        orientation: Default::default(),
+        half_size: (1.25, 1.25).into(),
+    };
+
     // create a list of each terminal to spawn
     let terminal_configs = [
-        (0, 0, Palette::rose_pine()),
-        (0, 1, Palette::gruvbox_material()),
-        (1, 0, Palette::solarized_dark()),
-        (1, 1, Palette::pretty_in_pink()),
+        (make_transform(0, 0), Palette::rose_pine()),
+        (make_transform(0, 1), Palette::gruvbox_material()),
+        (make_transform(1, 0), Palette::solarized_dark()),
+        (make_transform(1, 1), Palette::pretty_in_pink()),
     ];
 
     // spawn each terminal using the terminal factory and a select palette
-    let terms = terminal_configs.into_iter().map(|(x, y, palette)| {
-        Terminal::new(TerminalState {
-            position: (x as f32 * 2.8 - 1.4, y as f32 * 2.8 - 1.4, 0.0).into(),
-            orientation: Default::default(),
-            half_size: (1.25, 1.25).into(),
-            opacity: 1.0,
-            padding: Default::default(),
-            units_per_em: 0.06,
-            colors: palette.to_ansi(),
-        })
-    });
+    let mut terms: Vec<_> = terminal_configs
+        .iter()
+        .map(|(transform, palette)| {
+            let state = TerminalState {
+                position: transform.position,
+                orientation: transform.orientation,
+                half_size: transform.half_size,
+                opacity: 0.8,
+                padding: Default::default(),
+                units_per_em: 0.06,
+                colors: palette.to_ansi(),
+            };
 
-    sleep(0.5);
+            (Terminal::new(state.clone()), state)
+        })
+        .collect();
+
+    sleep(0.1);
+
+    let panels = REGISTRY
+        .get_service("rs.hearth.kindling.PanelManager")
+        .unwrap();
+
+    let mut term_panels = Vec::new();
 
     // enter and execute the pipes command in each terminal
-    for term in terms {
+    for ((term, _state), (transform, _)) in terms.iter().zip(terminal_configs.iter()) {
         term.input("pipes\n".into());
 
-        // forget the terminals so that they dont drop when this function exits
-        std::mem::forget(term);
+        let on_event = Mailbox::new();
+
+        panels.send(
+            &PanelManagerRequest::CreatePanel {
+                transform: *transform,
+            },
+            &[&on_event.make_capability(Permissions::SEND | Permissions::MONITOR)],
+        );
+
+        term_panels.push(on_event);
+    }
+
+    loop {
+        let (idx, sig) = Mailbox::poll(term_panels.iter().collect::<Vec<_>>().as_slice());
+        let (ref mut term, ref mut state) = terms.get_mut(idx).unwrap();
+
+        let Signal::Message(msg) = sig else {
+            panic!("expected message");
+        };
+
+        let event: PanelEvent = serde_json::from_slice(&msg.data).unwrap();
+
+        match event {
+            PanelEvent::FocusGained => {
+                state.opacity = 1.0;
+                term.update(state.clone());
+            }
+            PanelEvent::FocusLost => {
+                state.opacity = 0.8;
+                term.update(state.clone());
+            }
+            _ => {}
+        }
     }
 }
 

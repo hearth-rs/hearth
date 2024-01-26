@@ -16,162 +16,25 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{collections::HashMap, f32::consts::FRAC_PI_2};
+use std::f32::consts::FRAC_PI_2;
 
-use hearth_guest::{
-    debug_draw::{DebugDrawMesh, DebugDrawVertex},
-    export_metadata,
-    window::*,
-    Color,
-};
+use hearth_guest::{export_metadata, window::*};
 use kindling_host::prelude::{
     glam::{vec3, DVec2, EulerRot, Mat4, Quat, Vec3},
     *,
 };
-use rapier3d::{geometry::ColliderSet, parry::query::Ray, pipeline::QueryPipeline, prelude::*};
+use kindling_schema::panel::PanelManagerRequest;
 
 export_metadata!();
-
-struct PhysicsWorld {
-    bodies: RigidBodySet,
-    colliders: ColliderSet,
-    qp: QueryPipeline,
-}
-
-impl PhysicsWorld {
-    pub fn new() -> Self {
-        Self {
-            bodies: RigidBodySet::new(),
-            colliders: ColliderSet::new(),
-            qp: QueryPipeline::new(),
-        }
-    }
-}
-
-struct Cube {
-    position: Vec3,
-    radius: f32,
-    dd: DebugDraw,
-}
-
-impl Cube {
-    pub fn new(position: Vec3) -> Self {
-        Self {
-            position,
-            radius: 1.0,
-            dd: DebugDraw::new(),
-        }
-    }
-
-    fn make_collider(&self) -> Collider {
-        ColliderBuilder::cuboid(self.radius, self.radius, self.radius)
-            .position(self.position.to_array().into())
-            .build()
-    }
-
-    pub fn draw(&self, color: Color) {
-        let r = self.radius;
-        let vertices = [
-            vec3(r, r, r),
-            vec3(r, r, -r),
-            vec3(r, -r, r),
-            vec3(r, -r, -r),
-            vec3(-r, r, r),
-            vec3(-r, r, -r),
-            vec3(-r, -r, r),
-            vec3(-r, -r, -r),
-        ]
-        .iter()
-        .map(|v| *v + self.position)
-        .map(|v| DebugDrawVertex { position: v, color })
-        .collect();
-
-        let indices = (0..8)
-            .flat_map(|limit| (limit..8).flat_map(move |idx| [limit, idx]))
-            .collect();
-
-        self.dd.update(DebugDrawMesh { vertices, indices })
-    }
-}
-
-struct CubeWorld {
-    physics: PhysicsWorld,
-    cubes: HashMap<ColliderHandle, Cube>,
-    current_highlight: Option<ColliderHandle>,
-    selected_color: Color,
-    unselected_color: Color,
-}
-
-impl CubeWorld {
-    pub fn new() -> Self {
-        let mut physics = PhysicsWorld::new();
-        let mut cubes = HashMap::new();
-
-        let positions = [
-            vec3(4.0, 5.0, -2.0),
-            vec3(-2.0, 5.0, 4.0),
-            vec3(-3.0, 3.0, -1.0),
-        ];
-
-        for position in positions {
-            let cube = Cube::new(position);
-            let handle = physics.colliders.insert(cube.make_collider());
-            cubes.insert(handle, cube);
-        }
-
-        physics.qp.update(&physics.bodies, &physics.colliders);
-
-        let selected_color = Color::from_rgb(0xff, 0x00, 0x00);
-        let unselected_color = Color::from_rgb(0x00, 0x00, 0xff);
-
-        for cube in cubes.values() {
-            cube.draw(unselected_color);
-        }
-
-        Self {
-            cubes,
-            physics,
-            current_highlight: None,
-            selected_color,
-            unselected_color,
-        }
-    }
-
-    pub fn update(&mut self, ray_origin: Vec3, ray_delta: Vec3) {
-        let ray = Ray::new(ray_origin.to_array().into(), ray_delta.to_array().into());
-
-        let new_highlight = self
-            .physics
-            .qp
-            .cast_ray(
-                &self.physics.bodies,
-                &self.physics.colliders,
-                &ray,
-                10.0,
-                true,
-                QueryFilter::new(),
-            )
-            .map(|cast| cast.0);
-
-        if new_highlight != self.current_highlight {
-            if let Some(old) = self.current_highlight {
-                self.cubes.get(&old).unwrap().draw(self.unselected_color);
-            }
-
-            if let Some(new) = new_highlight {
-                self.cubes.get(&new).unwrap().draw(self.selected_color);
-            }
-
-            self.current_highlight = new_highlight;
-        }
-    }
-}
 
 #[no_mangle]
 pub extern "C" fn run() {
     let events = MAIN_WINDOW.subscribe();
     let mut flycam = Flycam::new();
-    let mut cubes = CubeWorld::new();
+
+    let panels = REGISTRY
+        .get_service("rs.hearth.kindling.PanelManager")
+        .unwrap();
 
     MAIN_WINDOW.hide_cursor();
     MAIN_WINDOW.cursor_grab_mode(CursorGrabMode::Locked);
@@ -180,8 +43,16 @@ pub extern "C" fn run() {
         let (event, _) = events.recv::<WindowEvent>();
         flycam.on_event(event);
 
-        let (origin, direction) = flycam.cast_ray();
-        cubes.update(origin, direction);
+        let (origin, dir) = flycam.cast_ray();
+
+        panels.send(
+            &PanelManagerRequest::UpdateCursor(kindling_schema::panel::Cursor {
+                origin,
+                dir,
+                select: false,
+            }),
+            &[],
+        );
     }
 }
 

@@ -1,0 +1,19 @@
+[package]
+name = "kindling-flycam"
+version = "0.1.0"
+edition = "2021"
+description = "A simple flycam implementation"
+
+[package.metadata.service]
+name = "rs.hearth.kindling.Flycam"
+targets = []
+dependencies.need = ["hearth.Window", "hearth.DebugDrawFactory"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+bitflags = "2.4.1"
+kindling-host.workspace = true
+hearth-guest.workspace = true
+rapier3d = "0.17"

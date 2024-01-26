@@ -1,0 +1,19 @@
+[package]
+name = "kindling-physics"
+version = "0.1.0"
+edition = "2021"
+description = "A guest-side physics engine as a service."
+
+[package.metadata.service]
+name = "rs.hearth.kindling.Physics"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hearth-guest.workspace = true
+kindling-host.workspace = true
+kindling-schema.workspace = true
+nalgebra = { version = "*", features = ["convert-glam020"] }
+rapier3d = "0.17.2"
+serde_json.workspace = true

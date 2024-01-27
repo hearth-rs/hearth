@@ -41,7 +41,7 @@ pub extern "C" fn run() {
 
     loop {
         let (event, _) = events.recv::<WindowEvent>();
-        flycam.on_event(event);
+        flycam.on_event(event.clone());
 
         let (origin, dir) = flycam.cast_ray();
 
@@ -49,10 +49,14 @@ pub extern "C" fn run() {
             &PanelManagerRequest::UpdateCursor(kindling_schema::panel::Cursor {
                 origin,
                 dir,
-                select: false,
+                select: flycam.keys.contains(Keys::SELECT),
             }),
             &[],
         );
+
+        if let WindowEvent::Redraw { .. } = event {
+            panels.send(&PanelManagerRequest::Redraw, &[]);
+        }
     }
 }
 
@@ -178,6 +182,18 @@ impl Flycam {
                 self.pitch += -delta.y as f32 * 0.003;
                 self.pitch = self.pitch.clamp(-FRAC_PI_2, FRAC_PI_2);
             }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+            } => {
+                self.keys |= Keys::SELECT;
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+            } => {
+                self.keys &= !Keys::SELECT;
+            }
             WindowEvent::Resized(size) => self.window_size = size.as_dvec2(),
             WindowEvent::CursorMoved { position } => self.cursor_pos = position,
             _ => {}
@@ -195,5 +211,6 @@ bitflags::bitflags! {
         const DOWN = 1 << 4;
         const UP = 1 << 5;
         const UNLOCK = 1 << 6;
+        const SELECT = 1 << 7;
     }
 }

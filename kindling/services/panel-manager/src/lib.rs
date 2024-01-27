@@ -25,6 +25,7 @@ export_metadata!();
 struct Panel {
     on_event: Capability,
     transform: PanelTransform,
+    last_cursor_pos: Vec2,
 }
 
 impl Panel {
@@ -58,6 +59,7 @@ impl PanelManager {
         self.panels.push(Panel {
             on_event,
             transform,
+            last_cursor_pos: Vec2::NAN,
         });
 
         // panels are dirtied so touch cursor in-place
@@ -68,25 +70,65 @@ impl PanelManager {
 
     fn update_cursor(&mut self, cursor: Cursor) {
         // calculate the closest cursor's panel intersection
-        let Some((_at, idx)) = self.raycast(cursor) else {
+        let Some((at, idx)) = self.raycast(cursor.clone()) else {
             // no panel hit, defocus current
             self.defocus_current();
             return;
         };
 
-        let mut focus_gained = false;
-        if let Some(old) = self.focused_panel.replace(idx) {
-            if old != idx {
-                self.panels[old].event(PanelEvent::FocusLost);
-                focus_gained = true;
-            }
-        } else {
-            focus_gained = true;
+        // track whether the current panel has been entered
+        let mut entered = false;
+
+        // if focus has changed, we're focusing the current panel
+        if Some(idx) != self.focused_panel {
+            // attempt to defocus the previous focused panel
+            self.defocus_current();
+            entered = true;
         }
 
-        if focus_gained {
-            self.panels[idx].event(PanelEvent::FocusGained);
+        // set the focused panel
+        self.focused_panel = Some(idx);
+
+        // retrieve a reference to the focused panel
+        let panel = &mut self.panels[idx];
+
+        // send focus event if entering
+        if entered {
+            panel.event(PanelEvent::FocusGained);
         }
+
+        // retrieve the last mouse select state
+        let last_select = self
+            .cursor
+            .as_ref()
+            .map(|cursor| cursor.select)
+            .unwrap_or(false);
+
+        // update the latest cursor
+        let select = cursor.select;
+        self.cursor = Some(cursor);
+
+        // send a cursor event with a kind based on the select state
+        panel.event(PanelEvent::CursorEvent {
+            at,
+            kind: match (entered, last_select, select) {
+                (true, _, _) => CursorEventKind::Entered(select),
+                (_, false, true) => CursorEventKind::ClickDown,
+                (_, true, false) => CursorEventKind::ClickUp,
+                _ => {
+                    // skip sending move event if cursor position is close enough
+                    if (at - panel.last_cursor_pos).length_squared() < 0.005 {
+                        // bypass updating last_cursor_pos within dead zone
+                        return;
+                    }
+
+                    CursorEventKind::Move
+                }
+            },
+        });
+
+        // update the panel's latest cursor position
+        panel.last_cursor_pos = at;
     }
 
     fn raycast(&self, cursor: Cursor) -> Option<(Vec2, usize)> {
@@ -148,9 +190,18 @@ impl PanelManager {
     }
 
     fn defocus_current(&mut self) {
-        if let Some(focused) = self.focused_panel.take() {
-            self.panels[focused].event(PanelEvent::FocusLost);
-        }
+        let Some(old) = self.focused_panel.take() else {
+            return;
+        };
+
+        let old = &self.panels[old];
+
+        old.event(PanelEvent::FocusLost);
+
+        old.event(PanelEvent::CursorEvent {
+            at: old.last_cursor_pos,
+            kind: CursorEventKind::Left,
+        });
     }
 }
 

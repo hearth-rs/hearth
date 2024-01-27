@@ -25,6 +25,7 @@ pub enum PanelManagerRequest {
     /// Create a panel.
     ///
     /// Provide one capability to receive the panel's [PanelEvents][PanelEvent].
+    // TODO don't let this get into main until we've implemented optional one-sided panel input too
     CreatePanel {
         /// The panel's initial transform.
         transform: PanelTransform,

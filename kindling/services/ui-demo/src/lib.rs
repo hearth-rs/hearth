@@ -17,21 +17,24 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{any::Any, sync::Arc};
+use std::{any::Any, f32::consts::FRAC_PI_2, sync::Arc};
 
-use hearth_guest::{canvas::*, window::*};
+use hearth_guest::{canvas::*, export_metadata, Mailbox, Permissions};
 use kindling_host::{
-    glam::{ivec2, uvec2, IVec2, UVec2},
+    glam::{ivec2, uvec2, IVec2, Quat, UVec2},
     prelude::{
         glam::{vec2, vec3, Vec2},
         *,
     },
 };
+use kindling_schema::panel::*;
 use raqote::*;
 use view::View;
 
 pub mod text;
 pub mod view;
+
+export_metadata!();
 
 static DRAW_OPTIONS: DrawOptions = DrawOptions {
     antialias: AntialiasMode::None,
@@ -587,14 +590,17 @@ fn app_logic(app: &App) -> impl view::View<App> {
 
 #[no_mangle]
 pub extern "C" fn run() {
-    let events = MAIN_WINDOW.subscribe();
-    MAIN_WINDOW.set_camera(90.0, 0.01, Default::default());
+    let transform = PanelTransform {
+        position: vec3(-3.0, 0.0, 3.0),
+        orientation: Quat::from_rotation_y(FRAC_PI_2),
+        half_size: vec2(1.0, 1.0),
+    };
 
     let canvas = Canvas::new(
         Position {
-            origin: vec3(0.0, 0.0, -1.0),
-            orientation: Default::default(),
-            half_size: vec2(1.0, 1.0),
+            origin: transform.position,
+            orientation: transform.orientation,
+            half_size: transform.half_size,
         },
         Pixels {
             width: 1,
@@ -604,10 +610,19 @@ pub extern "C" fn run() {
         CanvasSamplingMode::Nearest,
     );
 
+    let events = Mailbox::new();
+
+    let panel_manager = REGISTRY
+        .get_service("rs.hearth.kindling.PanelManager")
+        .unwrap();
+
+    panel_manager.send(
+        &PanelManagerRequest::CreatePanel { transform },
+        &[&events.make_capability(Permissions::SEND | Permissions::MONITOR)],
+    );
+
     let canvas_size = (200, 200);
-    let mut window_size = Vec2::new(10.0, 10.0);
-    let mut cursor_pos = Vec2::ZERO;
-    let mut grab_start: Option<Vec2> = None;
+    let mut grab_start: Option<IVec2> = None;
 
     let font = Arc::new(bdf::read(include_bytes!("cozette/cozette.bdf").as_slice()).unwrap());
 
@@ -635,46 +650,37 @@ pub extern "C" fn run() {
         });
 
         loop {
-            let (msg, _) = events.recv::<WindowEvent>();
+            let (msg, _) = events.recv::<PanelEvent>();
 
             match msg {
-                WindowEvent::Resized(size) => {
-                    window_size = size.as_vec2();
-                }
-                WindowEvent::CursorMoved { position: new_pos } => {
-                    let aspect = window_size.x / window_size.y;
-                    let window_space = new_pos.as_vec2() / window_size;
+                PanelEvent::CursorEvent { at, kind } => {
+                    let cursor_pos = ((at * vec2(0.5, -0.5) + 0.5)
+                        * vec2(canvas_size.0 as f32, canvas_size.1 as f32))
+                    .round()
+                    .as_ivec2();
 
-                    let x = window_space.x * aspect - (aspect - 1.0) / 2.0;
-                    let y = window_space.y;
-
-                    cursor_pos = (Vec2::new(x, y)
-                        * Vec2::new(canvas_size.0 as f32, canvas_size.1 as f32))
-                    .round();
-
-                    if let Some(start) = grab_start.as_ref() {
-                        let delta = (cursor_pos - *start).as_ivec2();
-                        root.on_input(InputEvent::DragMove(delta), &mut msg_tx);
-                        redraw = true;
+                    match kind {
+                        CursorEventKind::ClickDown => {
+                            grab_start = Some(cursor_pos);
+                            root.on_input(InputEvent::DragStart(cursor_pos), &mut msg_tx);
+                            redraw = true;
+                        }
+                        CursorEventKind::ClickUp => {
+                            grab_start = None;
+                            root.on_input(InputEvent::DragEnd, &mut msg_tx);
+                            redraw = true;
+                        }
+                        CursorEventKind::Move => {
+                            if let Some(start) = grab_start.as_ref() {
+                                let delta = cursor_pos - *start;
+                                root.on_input(InputEvent::DragMove(delta), &mut msg_tx);
+                                redraw = true;
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                WindowEvent::MouseInput {
-                    state: ElementState::Pressed,
-                    button: MouseButton::Left,
-                } => {
-                    grab_start = Some(cursor_pos);
-                    root.on_input(InputEvent::DragStart(cursor_pos.as_ivec2()), &mut msg_tx);
-                    redraw = true;
-                }
-                WindowEvent::MouseInput {
-                    state: ElementState::Released,
-                    button: MouseButton::Left,
-                } => {
-                    grab_start = None;
-                    root.on_input(InputEvent::DragEnd, &mut msg_tx);
-                    redraw = true;
-                }
-                WindowEvent::Redraw { .. } => {
+                PanelEvent::Redraw { .. } => {
                     break;
                 }
                 _ => {}

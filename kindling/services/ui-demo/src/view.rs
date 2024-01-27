@@ -274,7 +274,7 @@ impl<T, A: View<T>, B: View<T>> View<T> for Flow<T, A, B> {
             &mut widget.children[1].inner
         } else {
             // child ID not found, so this event is out-of-date or invalid.
-            warning!("ID out of date: {:?}", path);
+            warn!("ID out of date: {:?}", path);
             return;
         };
 

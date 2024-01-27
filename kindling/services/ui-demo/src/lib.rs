@@ -635,7 +635,7 @@ pub extern "C" fn run() {
         });
 
         loop {
-            let (msg, _) = events.recv_json::<WindowEvent>();
+            let (msg, _) = events.recv::<WindowEvent>();
 
             match msg {
                 WindowEvent::Resized(size) => {

@@ -28,8 +28,8 @@ use hearth_rend3::{
     Node, Rend3Plugin, Routine, RoutineInfo,
 };
 use hearth_runtime::{
-    async_trait, cargo_process_metadata,
-    process::ProcessMetadata,
+    async_trait,
+    hearth_macros::GetProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     utils::*,
 };
@@ -305,6 +305,8 @@ impl<'a> Node<'a> for DebugDrawNode<'a> {
     }
 }
 
+/// An instance of a debug draw.
+#[derive(GetProcessMetadata)]
 pub struct DebugDrawInstance {
     id: usize,
     destroyed: bool,
@@ -336,6 +338,8 @@ impl SinkProcess for DebugDrawInstance {
     }
 }
 
+/// Native debug draw factory service.
+#[derive(GetProcessMetadata)]
 pub struct DebugDrawFactory {
     next_id: usize,
     update_tx: Sender<(usize, DebugDrawUpdate)>,
@@ -350,19 +354,13 @@ impl RequestResponseProcess for DebugDrawFactory {
         &'a mut self,
         request: &mut RequestInfo<'a, Self::Request>,
     ) -> ResponseInfo<Self::Response> {
-        let instance = DebugDrawInstance {
+        let child = request.spawn(DebugDrawInstance {
             id: self.next_id,
             destroyed: false,
             update_tx: self.update_tx.clone(),
-        };
+        });
 
         self.next_id += 1;
-
-        let mut meta = cargo_process_metadata!();
-        meta.name = Some("DebugDrawInstance".into());
-        meta.description = Some("An instance of Debug Draw.".into());
-
-        let child = request.spawn(meta, instance);
 
         ResponseInfo {
             data: (),
@@ -373,12 +371,6 @@ impl RequestResponseProcess for DebugDrawFactory {
 
 impl ServiceRunner for DebugDrawFactory {
     const NAME: &'static str = "hearth.DebugDrawFactory";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-        meta.description = Some("Native Debug Draw factory service.".into());
-        meta
-    }
 }
 
 #[derive(Default)]

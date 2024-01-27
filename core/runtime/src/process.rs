@@ -21,10 +21,9 @@
 use std::sync::{atomic::AtomicUsize, Arc};
 
 use flue::{Mailbox, MailboxGroup, PostOffice, Table};
-use flume::Sender;
 use hearth_schema::ProcessLogLevel;
 use ouroboros::self_referencing;
-use tracing::debug;
+use tracing::{debug, Span};
 
 /// A local Hearth process. The main entrypoint for Hearth programming.
 #[self_referencing]
@@ -61,8 +60,11 @@ pub struct ProcessInfo {
     /// The [ProcessId] of this process.
     pub pid: ProcessId,
 
-    /// A sender to this process's log.
-    pub log_tx: Sender<ProcessLogEvent>,
+    /// A tracing span for process logs.
+    ///
+    /// All tracing events originating from this span will be considered to be logs from this
+    /// process
+    pub process_span: Span,
 
     /// This process's [ProcessMetdata].
     pub meta: ProcessMetadata,
@@ -121,17 +123,22 @@ impl ProcessFactory {
             .pid_gen
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        debug!("spawning PID {}: {:?}", pid, meta);
+        debug!(%pid, ?meta, "spawning process");
 
-        let (log_tx, log_rx) = flume::unbounded();
+        // Create a span for the process to log its events to.
+        //
+        // The events within this span will be handled as appropriate by the currently configured
+        // subscriber, such as writing them to stderr or a file, or even over the network or in
+        // the UI itself.
+        let name = &meta.name;
+        let process_span =
+            tracing::debug_span!(parent: None, "process", label = name, process_id = pid);
 
-        tokio::spawn(async move {
-            while let Ok(event) = log_rx.recv_async().await {
-                debug!("PID {} log: {:?}", pid, event);
-            }
-        });
-
-        let id = ProcessInfo { pid, log_tx, meta };
+        let id = ProcessInfo {
+            pid,
+            process_span,
+            meta,
+        };
 
         Process::new(
             table,

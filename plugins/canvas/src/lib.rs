@@ -29,12 +29,11 @@ use hearth_rend3::{
     Node, Rend3Plugin, Routine, RoutineInfo,
 };
 use hearth_runtime::{
-    async_trait, cargo_process_metadata,
+    async_trait,
     flue::Permissions,
+    hearth_macros::GetProcessMetadata,
     hearth_schema::canvas::*,
-    process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
-    tokio,
     utils::*,
 };
 
@@ -481,6 +480,7 @@ impl<'a> Node<'a> for CanvasNode<'a> {
 }
 
 /// A canvas process. Processes [CanvasUpdate].
+#[derive(GetProcessMetadata)]
 pub struct CanvasInstance {
     /// This canvas's ID.
     id: CanvasId,
@@ -506,7 +506,8 @@ impl SinkProcess for CanvasInstance {
     }
 }
 
-/// Spawns [CanvasInstance] and processes [FactoryRequest].
+/// The native canvas factory service. Accepts FactoryRequest.
+#[derive(GetProcessMetadata)]
 pub struct CanvasFactory {
     /// The ID of the next canvas that will be spawned.
     next_id: CanvasId,
@@ -550,12 +551,8 @@ impl RequestResponseProcess for CanvasFactory {
                     ops_tx: self.ops_tx.clone(),
                 };
 
-                // initialize the instance's metadata
-                let mut meta = cargo_process_metadata!();
-                meta.name = Some("CanvasInstance".to_string());
-                meta.description = Some("An instance of a canvas.".to_string());
-
                 // spawn the instance child process
+                let meta = CanvasInstance::get_process_metadata();
                 let child = request.runtime.process_factory.spawn(meta);
 
                 // retrieve the child's parent cap
@@ -567,11 +564,8 @@ impl RequestResponseProcess for CanvasFactory {
 
                 // execute the instance process runner
                 let runtime = request.runtime.clone();
-                tokio::spawn(async move {
-                    instance
-                        .run("CanvasInstance".to_string(), runtime, &child)
-                        .await;
-                });
+
+                instance.spawn("CanvasInstance".to_string(), runtime, child);
 
                 // respond with the new canvas
                 ResponseInfo {
@@ -585,15 +579,6 @@ impl RequestResponseProcess for CanvasFactory {
 
 impl ServiceRunner for CanvasFactory {
     const NAME: &'static str = "hearth.canvas.CanvasFactory";
-
-    fn get_process_metadata() -> hearth_runtime::process::ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-
-        meta.description =
-            Some("The native canvas factory service. Accepts FactoryRequest.".to_string());
-
-        meta
-    }
 }
 
 /// A plugin that provides Hearth "canvases", rectangular 3D textures with

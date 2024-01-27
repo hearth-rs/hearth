@@ -117,6 +117,30 @@ impl From<ProcessLogLevel> for u32 {
     }
 }
 
+impl From<tracing::Level> for ProcessLogLevel {
+    fn from(val: tracing::Level) -> Self {
+        match val {
+            tracing::Level::TRACE => Self::Trace,
+            tracing::Level::DEBUG => Self::Debug,
+            tracing::Level::INFO => Self::Info,
+            tracing::Level::WARN => Self::Warning,
+            tracing::Level::ERROR => Self::Error,
+        }
+    }
+}
+
+impl From<ProcessLogLevel> for tracing::Level {
+    fn from(val: ProcessLogLevel) -> Self {
+        match val {
+            ProcessLogLevel::Trace => Self::TRACE,
+            ProcessLogLevel::Debug => Self::DEBUG,
+            ProcessLogLevel::Info => Self::INFO,
+            ProcessLogLevel::Warning => Self::WARN,
+            ProcessLogLevel::Error => Self::ERROR,
+        }
+    }
+}
+
 /// A kind of guest-side signal.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SignalKind {

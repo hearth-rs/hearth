@@ -1,2 +1,2 @@
-[alias]
-build-root = "run --manifest-path build/Cargo.toml --"
+[build]
+target = "wasm32-unknown-unknown"

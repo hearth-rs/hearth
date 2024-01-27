@@ -1,15 +1,10 @@
 [package]
-name = "kindling-init"
+name = "kindling-utils"
 version = "0.1.0"
 edition = "2021"
-
-[lib]
-crate-type = ["cdylib"]
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 hearth-guest.workspace = true
 kindling-host.workspace = true
-kindling-utils.workspace = true
-petgraph = "0.6"
 serde.workspace = true
-toml = "0.8"

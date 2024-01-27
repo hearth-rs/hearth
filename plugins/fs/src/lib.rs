@@ -16,12 +16,17 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-use hearth_runtime::{
-    async_trait, cargo_process_metadata, hearth_schema::fs::*, process::ProcessMetadata, utils::*,
+use std::{
+    fs::{read, read_dir},
+    path::{Component, PathBuf},
 };
-use std::fs::{read, read_dir};
-use std::path::{Component, PathBuf};
 
+use hearth_runtime::{
+    async_trait, hearth_macros::GetProcessMetadata, hearth_schema::fs::*, utils::*,
+};
+
+/// The native filesystem access service. Accepts FsRequest.
+#[derive(GetProcessMetadata)]
 pub struct FsPlugin {
     root: PathBuf,
 }
@@ -44,13 +49,6 @@ impl RequestResponseProcess for FsPlugin {
 
 impl ServiceRunner for FsPlugin {
     const NAME: &'static str = "hearth.fs.Filesystem";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-        meta.description =
-            Some("The native filesystem access service. Accepts FsRequest.".to_string());
-        meta
-    }
 }
 
 impl FsPlugin {

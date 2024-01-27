@@ -6,6 +6,7 @@ description = "Kindling's core panel manager."
 
 [package.metadata.service]
 name = "rs.hearth.kindling.PanelManager"
+dependencies.need = ["hearth.StopwatchFactory"]
 
 [lib]
 crate-type = ["cdylib"]
@@ -13,4 +14,5 @@ crate-type = ["cdylib"]
 [dependencies]
 glam.workspace = true
 hearth-guest.workspace = true
+kindling-host.workspace = true
 kindling-schema.workspace = true

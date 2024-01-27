@@ -18,6 +18,7 @@
 
 use glam::{Vec2, Vec3};
 use hearth_guest::{export_metadata, Capability, PARENT};
+use kindling_host::prelude::*;
 use kindling_schema::panel::*;
 
 export_metadata!();
@@ -39,6 +40,7 @@ struct PanelManager {
     panels: Vec<Panel>,
     focused_panel: Option<usize>,
     cursor: Option<Cursor>,
+    last_redraw: Stopwatch,
 }
 
 impl PanelManager {
@@ -52,6 +54,7 @@ impl PanelManager {
                 self.update_cursor(cursor);
             }
             PanelManagerRequest::DisableCursor => self.disable_cursor(),
+            PanelManagerRequest::Redraw => self.redraw(),
         }
     }
 
@@ -117,7 +120,7 @@ impl PanelManager {
                 (_, true, false) => CursorEventKind::ClickUp,
                 _ => {
                     // skip sending move event if cursor position is close enough
-                    if (at - panel.last_cursor_pos).length_squared() < 0.005 {
+                    if (at - panel.last_cursor_pos).length_squared() < 0.0001 {
                         // bypass updating last_cursor_pos within dead zone
                         return;
                     }
@@ -148,7 +151,7 @@ impl PanelManager {
             let hit = d / rd;
 
             // skip backwards raycasts
-            if hit < 0.0 {
+            if hit < 0.0 || !hit.is_finite() {
                 continue;
             }
 
@@ -187,6 +190,14 @@ impl PanelManager {
         }
 
         self.defocus_current();
+    }
+
+    fn redraw(&mut self) {
+        let dt = self.last_redraw.lap();
+
+        for panel in self.panels.iter() {
+            panel.event(PanelEvent::Redraw(dt));
+        }
     }
 
     fn defocus_current(&mut self) {

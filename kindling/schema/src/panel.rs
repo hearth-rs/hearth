@@ -35,6 +35,9 @@ pub enum PanelManagerRequest {
 
     /// Disable the global cursor.
     DisableCursor,
+
+    /// Redraw all panels.
+    Redraw,
 }
 
 /// A cursor's current state.
@@ -53,6 +56,11 @@ pub struct Cursor {
 /// An event occurring on a panel.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum PanelEvent {
+    /// Redraw this panel.
+    ///
+    /// Contains the time (in seconds) since the last redraw.
+    Redraw(f32),
+
     /// The panel has moved to the provided transform.
     Move(PanelTransform),
 

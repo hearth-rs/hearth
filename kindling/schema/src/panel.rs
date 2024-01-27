@@ -89,7 +89,9 @@ pub struct PanelTransform {
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub enum CursorEventKind {
     /// The cursor has entered this panel.
-    Entered,
+    ///
+    /// Carries the current state of the select button.
+    Entered(bool),
 
     /// The cursor has left this panel.
     Left,

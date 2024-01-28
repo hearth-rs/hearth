@@ -142,6 +142,28 @@ Example:
 hearth-server --help # prints usage info for the Hearth server
 ```
 
+## Running with Kindling
+The provided Hearth binaries act as a runtime and will do nothing on their own.
+For Hearth to work properly it needs a WebAssembly script to serve as the init
+system and a directory to serve as its root. Hearth's binaries will assume the
+init system is located in the root and named `init.wasm` if one is not provided
+manually. Hearth ships with a set of batteries-included utilities for use
+with the runtime, named Kindling. Kindling's source code is located with this
+repository [here](./kindling/). Kindling's root and init system can be built
+with the script found in the tools directory.
+
+A Cargo alias is provided for ease of use:
+
+```sh
+cargo build-root # build Kindling using the build script.
+```
+
+Now that the root has been built, Hearth can be ran with Kindling as its root:
+
+```sh
+hearth-client --root kindling/target/kindling-root/ # Run Hearth in serverless mode with the given root.
+```
+
 # Workspace Layout
 
 Hearth's codebase is composed of a single Rust workspace divided into many

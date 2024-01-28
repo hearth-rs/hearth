@@ -26,16 +26,13 @@ use hearth_rend3::{
 use hearth_runtime::{
     anyhow::{self, anyhow, bail},
     asset::{AssetLoader, AssetStore, JsonAssetLoader},
-    async_trait, cargo_process_metadata,
+    async_trait,
+    hearth_macros::GetProcessMetadata,
     hearth_schema::{renderer::*, LumpId},
-    process::ProcessMetadata,
     runtime::{Plugin, RuntimeBuilder},
     tokio::sync::mpsc::UnboundedSender,
     tracing::{error, warn},
-    utils::{
-        MessageInfo, RequestInfo, RequestResponseProcess, ResponseInfo, RunnerContext,
-        ServiceRunner, SinkProcess,
-    },
+    utils::*,
 };
 
 pub struct MeshLoader(Arc<Renderer>);
@@ -184,6 +181,8 @@ impl JsonAssetLoader for CubeTextureLoader {
     }
 }
 
+/// An instance of a renderer directional light. Accepts DirectionalLightUpdate.
+#[derive(GetProcessMetadata)]
 pub struct DirectionalLightInstance {
     renderer: Arc<Renderer>,
     handle: ResourceHandle<DirectionalLight>,
@@ -209,6 +208,8 @@ impl SinkProcess for DirectionalLightInstance {
     }
 }
 
+/// An instance of a renderer object. Accepts ObjectUpdate.
+#[derive(GetProcessMetadata)]
 pub struct ObjectInstance {
     renderer: Arc<Renderer>,
     handle: ObjectHandle,
@@ -250,7 +251,8 @@ impl SinkProcess for ObjectInstance {
     }
 }
 
-/// Implements the renderer message protocol.
+/// The native interface to the renderer. Accepts RendererRequest.
+#[derive(GetProcessMetadata)]
 pub struct RendererService {
     renderer: Arc<Renderer>,
     command_tx: UnboundedSender<Rend3Command>,
@@ -278,19 +280,10 @@ impl RequestResponseProcess for RendererService {
 
                 let handle = self.renderer.add_directional_light(light);
 
-                let instance = DirectionalLightInstance {
+                let child = request.spawn(DirectionalLightInstance {
                     renderer: self.renderer.clone(),
                     handle,
-                };
-
-                let mut meta = cargo_process_metadata!();
-                meta.name = Some("DirectionalLight".to_string());
-                meta.description = Some(
-                    "An instance of a renderer directional light. Accepts DirectionalLightUpdate."
-                        .to_string(),
-                );
-
-                let child = request.spawn(meta, instance);
+                });
 
                 return ResponseInfo {
                     data: Ok(RendererSuccess::Ok),
@@ -341,18 +334,11 @@ impl RequestResponseProcess for RendererService {
 
                 let handle = self.renderer.add_object(object);
 
-                let instance = ObjectInstance {
+                let child = request.spawn(ObjectInstance {
                     renderer: self.renderer.clone(),
                     handle,
                     skeleton,
-                };
-
-                let mut meta = cargo_process_metadata!();
-                meta.name = Some("ObjectInstance".to_string());
-                meta.description =
-                    Some("An instance of a renderer object. Accepts ObjectUpdate.".to_string());
-
-                let child = request.spawn(meta, instance);
+                });
 
                 return ResponseInfo {
                     data: Ok(RendererSuccess::Ok),
@@ -384,14 +370,6 @@ impl RequestResponseProcess for RendererService {
 
 impl ServiceRunner for RendererService {
     const NAME: &'static str = "hearth.Renderer";
-
-    fn get_process_metadata() -> ProcessMetadata {
-        let mut meta = cargo_process_metadata!();
-        meta.description =
-            Some("The native interface to the renderer. Accepts RendererRequest.".to_string());
-
-        meta
-    }
 }
 
 impl RendererService {

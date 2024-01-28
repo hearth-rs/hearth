@@ -41,12 +41,13 @@ use alacritty_terminal::{
     Term,
 };
 use glam::{vec2, IVec2, Mat4, UVec2, Vec2};
+use hearth_rend3::wgpu::{Extent3d, ImageCopyTexture, ImageDataLayout, Origin3d, TextureAspect};
 use hearth_schema::terminal::TerminalState;
 use mio_extras::channel::Sender as MioSender;
 use owned_ttf_parser::AsFaceRef;
 
 use crate::{
-    draw::{GlyphVertex, SolidVertex, TerminalDrawState},
+    draw::{GlyphVertex, SolidVertex, TerminalDrawState, TerminalPipelines},
     text::{FaceAtlas, FontSet, FontStyle},
 };
 
@@ -279,7 +280,7 @@ impl Terminal {
         inner.state = state;
     }
 
-    pub fn update_draw_state(&self, draw: &mut TerminalDrawState) {
+    pub fn update_draw_state(&self, pipelines: &TerminalPipelines, draw: &mut TerminalDrawState) {
         let inner = self.inner.lock();
         let grid_size = inner.grid_size;
         let state = inner.state.clone();
@@ -299,7 +300,7 @@ impl Terminal {
         canvas.update_from_content(content);
         drop(term); // get off the mutex
 
-        canvas.apply_to_state(draw);
+        canvas.apply_to_state(pipelines, draw);
     }
 
     pub fn quit(&self) {
@@ -347,8 +348,7 @@ impl Terminal {
 /// An in-progress terminal draw state.
 pub struct TerminalCanvas {
     fonts: FontSet<FaceWithMetrics>,
-    bg_vertices: Vec<SolidVertex>,
-    bg_indices: Vec<u32>,
+    bg_texture: Vec<u32>,
     overlay_vertices: Vec<SolidVertex>,
     overlay_indices: Vec<u32>,
     glyphs: Vec<(Vec2, FontStyle, u16, u32)>,
@@ -376,8 +376,7 @@ impl TerminalCanvas {
 
         Self {
             fonts,
-            bg_vertices: Vec::new(),
-            bg_indices: Vec::new(),
+            bg_texture: vec![0; (grid_size.x * grid_size.y) as usize],
             overlay_vertices: Vec::new(),
             overlay_indices: Vec::new(),
             glyphs: Vec::new(),
@@ -405,7 +404,7 @@ impl TerminalCanvas {
         self.draw_cursor(content.cursor);
     }
 
-    pub fn apply_to_state(&self, state: &mut TerminalDrawState) {
+    pub fn apply_to_state(&self, pipelines: &TerminalPipelines, state: &mut TerminalDrawState) {
         let mut touched = FontSet::<Vec<u16>>::default();
         let mut glyph_meshes = FontSet::<(Vec<GlyphVertex>, Vec<u32>)>::default();
 
@@ -454,11 +453,37 @@ impl TerminalCanvas {
                 mesh.update(&state.device, &state.queue, &vertices, &indices)
             });
 
-        state.bg_mesh.update(
-            &state.device,
-            &state.queue,
-            &self.bg_vertices,
-            &self.bg_indices,
+        state.grid_half_size = self.grid_to_pos(self.grid_size.x as i32, self.grid_size.y as i32);
+
+        state.grid_size = self.grid_size;
+
+        if state.grid_capacity.x < state.grid_size.x || state.grid_capacity.y < state.grid_size.y {
+            let (texture, bind_group) =
+                TerminalDrawState::make_grid(pipelines, &state.grid_buffer, state.grid_size);
+
+            state.grid_texture = texture;
+            state.grid_bind_group = bind_group;
+            state.grid_capacity = state.grid_size;
+        }
+
+        state.queue.write_texture(
+            ImageCopyTexture {
+                texture: &state.grid_texture,
+                mip_level: 0,
+                origin: Origin3d::ZERO,
+                aspect: TextureAspect::All,
+            },
+            bytemuck::cast_slice(self.bg_texture.as_slice()),
+            ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some((state.grid_size.x * 4).try_into().unwrap()),
+                rows_per_image: Some(state.grid_size.y.try_into().unwrap()),
+            },
+            Extent3d {
+                width: state.grid_size.x,
+                height: state.grid_size.y,
+                depth_or_array_layers: 1,
+            },
         );
 
         state.overlay_mesh.update(
@@ -490,9 +515,7 @@ impl TerminalCanvas {
         let mut fg = cell.fg;
         let mut bg = cell.bg;
 
-        let is_full_block = cell.c == '▀';
-
-        if cell.flags.contains(Flags::INVERSE) ^ is_full_block {
+        if cell.flags.contains(Flags::INVERSE) {
             std::mem::swap(&mut fg, &mut bg);
         }
 
@@ -505,12 +528,8 @@ impl TerminalCanvas {
             self.color_to_u32(bg)
         };
 
-        self.draw_solid_rect(tl, br, bg);
-
-        // skip foreground rendering if the entire cell is occupied
-        if is_full_block {
-            return;
-        }
+        let idx = (row * (self.grid_size.x as i32) + col) as usize;
+        self.bg_texture[idx] = bg;
 
         let style = FontStyle::from_cell_flags(cell.flags);
         let font = self.fonts.get(style);
@@ -577,8 +596,8 @@ impl TerminalCanvas {
     }
 
     pub fn draw_solid_rect(&mut self, tl: Vec2, br: Vec2, color: u32) {
-        let index = self.bg_vertices.len() as u32;
-        self.bg_vertices.extend_from_slice(&[
+        let index = self.overlay_vertices.len() as u32;
+        self.overlay_vertices.extend_from_slice(&[
             SolidVertex {
                 position: tl,
                 color,
@@ -597,7 +616,7 @@ impl TerminalCanvas {
             },
         ]);
 
-        self.bg_indices.extend_from_slice(&[
+        self.overlay_indices.extend_from_slice(&[
             index,
             index + 1,
             index + 2,

@@ -334,7 +334,9 @@ impl rend3_framework::App for Demo {
                 renderer.swap_instruction_buffers();
                 let mut eval_output = renderer.evaluate_instructions();
 
-                inner.terminal.update_draw_state(&mut inner.draw_state);
+                inner
+                    .terminal
+                    .update_draw_state(&inner.pipelines, &mut inner.draw_state);
 
                 let mut skybox_routine = rend3_framework::lock(&routines.skybox);
                 let tonemapping_routine = rend3_framework::lock(&routines.tonemapping);

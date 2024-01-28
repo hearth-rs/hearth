@@ -21,9 +21,8 @@ use super::*;
 use hearth_guest::debug_draw::*;
 
 lazy_static::lazy_static! {
-    static ref DEBUG_DRAW_FACTORY: RequestResponse<(), ()> = {
-        RequestResponse::new(registry::REGISTRY.get_service("hearth.DebugDrawFactory").unwrap())
-    };
+    static ref DEBUG_DRAW_FACTORY: RequestResponse<(), ()> =
+        RequestResponse::expect_service("hearth.DebugDrawFactory");
 }
 
 /// An instance of debug draw.
@@ -33,7 +32,7 @@ pub struct DebugDraw {
 
 impl Drop for DebugDraw {
     fn drop(&mut self) {
-        self.cap.send_json(&DebugDrawUpdate::Destroy, &[]);
+        self.cap.send(&DebugDrawUpdate::Destroy, &[]);
     }
 }
 
@@ -60,16 +59,16 @@ impl DebugDraw {
 
     /// Hide this debug draw mesh.
     pub fn hide(&self) {
-        self.cap.send_json(&DebugDrawUpdate::Hide(true), &[]);
+        self.cap.send(&DebugDrawUpdate::Hide(true), &[]);
     }
 
     /// Show this debug draw mesh.
     pub fn show(&self) {
-        self.cap.send_json(&DebugDrawUpdate::Hide(false), &[]);
+        self.cap.send(&DebugDrawUpdate::Hide(false), &[]);
     }
 
     /// Update the contents of this debug draw mesh.
     pub fn update(&self, mesh: DebugDrawMesh) {
-        self.cap.send_json(&DebugDrawUpdate::Contents(mesh), &[]);
+        self.cap.send(&DebugDrawUpdate::Contents(mesh), &[]);
     }
 }

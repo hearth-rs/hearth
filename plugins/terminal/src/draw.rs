@@ -250,7 +250,7 @@ impl TerminalPipelines {
             GlyphVertex::LAYOUT,
         );
 
-        let grid_shader = device.create_shader_module(&include_wgsl!("grid.wgsl"));
+        let grid_shader = device.create_shader_module(include_wgsl!("grid.wgsl"));
 
         let grid_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("AlacrittyRoutine grid pipeline layout"),
@@ -286,11 +286,11 @@ impl TerminalPipelines {
             fragment: Some(FragmentState {
                 module: &grid_shader,
                 entry_point: "grid_fs",
-                targets: &[ColorTargetState {
+                targets: &[Some(ColorTargetState {
                     format,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::COLOR,
-                }],
+                })],
             }),
             multiview: None,
         });
@@ -445,6 +445,8 @@ impl TerminalDrawState {
         grid_buffer: &Buffer,
         size: UVec2,
     ) -> (Texture, BindGroup) {
+        let format = TextureFormat::Rgba8UnormSrgb;
+
         let grid_texture = pipelines.device.create_texture(&TextureDescriptor {
             label: Some("Alacritty terminal grid texture"),
             size: Extent3d {
@@ -455,7 +457,8 @@ impl TerminalDrawState {
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8UnormSrgb,
+            format,
+            view_formats: &[format],
             usage: TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
         });
 

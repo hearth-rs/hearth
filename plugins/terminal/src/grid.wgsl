@@ -17,23 +17,23 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 struct GridVertexOut {
-    [[builtin(position)]] clip_position: vec4<f32>;
-    [[location(0)]] uv: vec2<f32>;
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
 };
 
 struct GridUniform {
-    mvp: mat4x4<f32>;
-    size: vec2<f32>;
-    tex_range: vec2<f32>;
-    texture_size: vec4<f32>;
+    mvp: mat4x4<f32>,
+    size: vec2<f32>,
+    tex_range: vec2<f32>,
+    texture_size: vec4<f32>,
 };
 
-[[group(0), binding(0)]] var<uniform> grid: GridUniform;
-[[group(0), binding(1)]] var t_grid: texture_2d<f32>;
-[[group(0), binding(2)]] var s_grid: sampler;
+@group(0) @binding(0) var<uniform> grid: GridUniform;
+@group(0) @binding(1) var t_grid: texture_2d<f32>;
+@group(0) @binding(2) var s_grid: sampler;
 
-[[stage(vertex)]]
-fn grid_vs([[builtin(vertex_index)]] in_vertex_index: u32) -> GridVertexOut {
+@vertex
+fn grid_vs(@builtin(vertex_index) in_vertex_index: u32) -> GridVertexOut {
     let x = f32(i32(in_vertex_index & 1u));
     let y = f32(i32(in_vertex_index & 2u) / 2);
     let xy = vec2<f32>(x, y);
@@ -54,8 +54,8 @@ fn smoothstep(low: vec2<f32>, high: vec2<f32>, x: vec2<f32>) -> vec2<f32> {
     return t * t * (3.0 - 2.0 * t);
 }
 
-[[stage(fragment)]]
-fn grid_fs(frag: GridVertexOut) -> [[location(0)]] vec4<f32> {
+@fragment
+fn grid_fs(frag: GridVertexOut) -> @location(0) vec4<f32> {
     // the "pixel art upscaling" method comes from here:
     // https://www.youtube.com/watch?v=d6tp43wZqps
 

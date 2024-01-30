@@ -172,7 +172,7 @@ impl JsonAssetLoader for CubeTextureLoader {
             format: TextureFormat::Rgba8UnormSrgb,
             size: data.size,
             mip_count: MipmapCount::ONE,
-            mip_source: MipmapSource::Generated,
+            mip_source: MipmapSource::Uploaded,
         };
 
         self.0

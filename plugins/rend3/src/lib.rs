@@ -94,7 +94,6 @@ pub struct Rend3Plugin {
     pub ambient: Vec4,
     pub frame_request_tx: mpsc::UnboundedSender<FrameRequest>,
     pub command_tx: mpsc::UnboundedSender<Rend3Command>,
-    new_skybox: Option<TextureCubeHandle>,
     frame_request_rx: mpsc::UnboundedReceiver<FrameRequest>,
     command_rx: mpsc::UnboundedReceiver<Rend3Command>,
     routines: Vec<Box<dyn Routine>>,
@@ -146,7 +145,6 @@ impl Rend3Plugin {
             frame_request_rx,
             command_tx,
             command_rx,
-            new_skybox: None,
             ambient: Vec4::ZERO,
             routines: Vec::new(),
         }
@@ -163,7 +161,7 @@ impl Rend3Plugin {
             use Rend3Command::*;
             match command {
                 SetSkybox(texture) => {
-                    self.new_skybox = Some(texture);
+                    self.skybox_routine.set_background_texture(Some(texture));
                 }
                 SetAmbient(ambient) => {
                     self.ambient = ambient;
@@ -174,18 +172,15 @@ impl Rend3Plugin {
 
     /// Draws a frame in response to a [FrameRequest].
     pub fn draw(&mut self, request: FrameRequest) {
-        self.renderer.swap_instruction_buffers();
-        let mut eval_output = self.renderer.evaluate_instructions();
-
-        if let Some(skybox) = self.new_skybox.take() {
-            self.skybox_routine.set_background_texture(Some(skybox));
-            self.skybox_routine.evaluate(&self.renderer);
-        }
-
         let aspect = request.resolution.as_vec2();
         let aspect = aspect.x / aspect.y;
         self.renderer.set_aspect_ratio(aspect);
         self.renderer.set_camera_data(request.camera);
+        self.renderer.swap_instruction_buffers();
+
+        let mut eval_output = self.renderer.evaluate_instructions();
+
+        self.skybox_routine.evaluate(&self.renderer);
 
         let nodes: Vec<_> = self
             .routines

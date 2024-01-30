@@ -229,6 +229,10 @@ impl<T: Pod> TryFrom<Vec<u8>> for ByteVec<T> {
     type Error = bytemuck::PodCastError;
 
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        bytemuck::try_cast_slice(bytes.as_slice()).map(|slice| Self(slice.to_vec()))
+        if bytes.is_empty() {
+            Ok(Self(Vec::new()))
+        } else {
+            bytemuck::try_cast_slice(bytes.as_slice()).map(|slice| Self(slice.to_vec()))
+        }
     }
 }

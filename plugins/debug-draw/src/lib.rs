@@ -258,7 +258,7 @@ impl<'a> Node<'a> for DebugDrawNode<'a> {
     fn draw<'graph>(&'graph self, info: &mut RoutineInfo<'_, 'graph>) {
         let mut builder = info.graph.add_node("debug draw");
         let output_handle =
-            builder.add_render_target(info.output_handle, NodeResourceUsage::Output);
+            builder.add_render_target(info.output_handle, NodeResourceUsage::InputOutput);
         let depth_handle = builder.add_render_target(
             info.state.depth.rendering_target(),
             NodeResourceUsage::InputOutput,

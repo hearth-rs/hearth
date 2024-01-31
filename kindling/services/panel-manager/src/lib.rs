@@ -16,8 +16,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use std::collections::HashMap;
+
 use glam::{Vec2, Vec3};
-use hearth_guest::{export_metadata, Capability, PARENT};
+use hearth_guest::{export_metadata, Capability, Permissions, Signal, PARENT};
 use kindling_host::prelude::*;
 use kindling_schema::panel::*;
 
@@ -37,13 +39,21 @@ impl Panel {
 
 #[derive(Default)]
 struct PanelManager {
-    panels: Vec<Panel>,
-    focused_panel: Option<usize>,
+    panels: HashMap<Capability, Panel>,
+    focused_panel: Option<Capability>,
     cursor: Option<Cursor>,
     last_redraw: Stopwatch,
 }
 
 impl PanelManager {
+    fn on_down(&mut self, subject: Capability) {
+        self.panels.remove(&subject);
+
+        if self.focused_panel == Some(subject) {
+            self.focused_panel = None;
+        }
+    }
+
     fn on_request(&mut self, request: PanelManagerRequest, caps: Vec<Capability>) {
         match request {
             PanelManagerRequest::CreatePanel { transform } => {
@@ -59,11 +69,16 @@ impl PanelManager {
     }
 
     fn create_panel(&mut self, transform: PanelTransform, on_event: Capability) {
-        self.panels.push(Panel {
-            on_event,
-            transform,
-            last_cursor_pos: Vec2::NAN,
-        });
+        PARENT.monitor(&on_event);
+
+        self.panels.insert(
+            on_event.demote(Permissions::empty()),
+            Panel {
+                on_event,
+                transform,
+                last_cursor_pos: Vec2::NAN,
+            },
+        );
 
         // panels are dirtied so touch cursor in-place
         if let Some(cursor) = self.cursor.as_ref() {
@@ -73,7 +88,7 @@ impl PanelManager {
 
     fn update_cursor(&mut self, cursor: Cursor) {
         // calculate the closest cursor's panel intersection
-        let Some((at, idx)) = self.raycast(cursor.clone()) else {
+        let Some((at, key)) = self.raycast(cursor.clone()) else {
             // no panel hit, defocus current
             self.defocus_current();
             return;
@@ -83,17 +98,17 @@ impl PanelManager {
         let mut entered = false;
 
         // if focus has changed, we're focusing the current panel
-        if Some(idx) != self.focused_panel {
+        if Some(key.clone()) != self.focused_panel {
             // attempt to defocus the previous focused panel
             self.defocus_current();
             entered = true;
         }
 
-        // set the focused panel
-        self.focused_panel = Some(idx);
-
         // retrieve a reference to the focused panel
-        let panel = &mut self.panels[idx];
+        let panel = self.panels.get_mut(&key).unwrap();
+
+        // set the focused panel
+        self.focused_panel = Some(key);
 
         // send focus event if entering
         if entered {
@@ -134,10 +149,10 @@ impl PanelManager {
         panel.last_cursor_pos = at;
     }
 
-    fn raycast(&self, cursor: Cursor) -> Option<(Vec2, usize)> {
-        let mut closest: Option<(f32, Vec2, usize)> = None;
+    fn raycast(&self, cursor: Cursor) -> Option<(Vec2, Capability)> {
+        let mut closest: Option<(f32, Vec2, Capability)> = None;
 
-        for (idx, panel) in self.panels.iter().enumerate() {
+        for (key, panel) in self.panels.iter() {
             // panel plane normal
             let n = panel.transform.orientation.mul_vec3(Vec3::Z);
 
@@ -170,10 +185,10 @@ impl PanelManager {
             }
 
             // bundle the intersection info and discard Z info
-            let intersection = (hit, at, idx);
+            let intersection = (hit, at, key.clone());
 
             // get the current closest (or set ours if there is none currently)
-            let closest = closest.get_or_insert(intersection);
+            let closest = closest.get_or_insert(intersection.clone());
 
             // set a new closest if the distance is closer
             if intersection.0 < closest.0 {
@@ -181,7 +196,7 @@ impl PanelManager {
             }
         }
 
-        closest.map(|(_, at, idx)| (at, idx))
+        closest.map(|(_, at, key)| (at, key))
     }
 
     fn disable_cursor(&mut self) {
@@ -195,7 +210,7 @@ impl PanelManager {
     fn redraw(&mut self) {
         let dt = self.last_redraw.lap();
 
-        for panel in self.panels.iter() {
+        for panel in self.panels.values() {
             panel.event(PanelEvent::Redraw(dt));
         }
     }
@@ -205,7 +220,7 @@ impl PanelManager {
             return;
         };
 
-        let old = &self.panels[old];
+        let old = self.panels.get(&old).unwrap();
 
         old.event(PanelEvent::FocusLost);
 
@@ -221,8 +236,14 @@ pub extern "C" fn run() {
     let mut app = PanelManager::default();
 
     loop {
-        // TODO remove panels with downed on_events
-        let (request, caps) = PARENT.recv();
-        app.on_request(request, caps);
+        match PARENT.recv_signal() {
+            Signal::Down { subject } => {
+                app.on_down(subject);
+            }
+            Signal::Message(msg) => {
+                let (request, caps) = msg.parse();
+                app.on_request(request, caps);
+            }
+        }
     }
 }

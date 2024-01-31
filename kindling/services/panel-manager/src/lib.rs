@@ -28,6 +28,7 @@ export_metadata!();
 struct Panel {
     on_event: Capability,
     transform: PanelTransform,
+    one_sided: bool,
     last_cursor_pos: Vec2,
 }
 
@@ -56,9 +57,12 @@ impl PanelManager {
 
     fn on_request(&mut self, request: PanelManagerRequest, caps: Vec<Capability>) {
         match request {
-            PanelManagerRequest::CreatePanel { transform } => {
+            PanelManagerRequest::CreatePanel {
+                transform,
+                one_sided,
+            } => {
                 let on_event = caps.first().unwrap().to_owned();
-                self.create_panel(transform, on_event);
+                self.create_panel(transform, one_sided, on_event);
             }
             PanelManagerRequest::UpdateCursor(cursor) => {
                 self.update_cursor(cursor);
@@ -68,7 +72,7 @@ impl PanelManager {
         }
     }
 
-    fn create_panel(&mut self, transform: PanelTransform, on_event: Capability) {
+    fn create_panel(&mut self, transform: PanelTransform, one_sided: bool, on_event: Capability) {
         PARENT.monitor(&on_event);
 
         self.panels.insert(
@@ -76,6 +80,7 @@ impl PanelManager {
             Panel {
                 on_event,
                 transform,
+                one_sided,
                 last_cursor_pos: Vec2::NAN,
             },
         );
@@ -88,11 +93,17 @@ impl PanelManager {
 
     fn update_cursor(&mut self, cursor: Cursor) {
         // calculate the closest cursor's panel intersection
-        let Some((at, key)) = self.raycast(cursor.clone()) else {
+        let Some((at, on_back, key)) = self.raycast(cursor.clone()) else {
             // no panel hit, defocus current
             self.defocus_current();
             return;
         };
+
+        if on_back && self.panels.get(&key).unwrap().one_sided {
+            // one-sided panel hit on back side, defocus corrent
+            self.defocus_current();
+            return;
+        }
 
         // track whether the current panel has been entered
         let mut entered = false;
@@ -149,8 +160,8 @@ impl PanelManager {
         panel.last_cursor_pos = at;
     }
 
-    fn raycast(&self, cursor: Cursor) -> Option<(Vec2, Capability)> {
-        let mut closest: Option<(f32, Vec2, Capability)> = None;
+    fn raycast(&self, cursor: Cursor) -> Option<(Vec2, bool, Capability)> {
+        let mut closest: Option<(f32, Vec2, bool, Capability)> = None;
 
         for (key, panel) in self.panels.iter() {
             // panel plane normal
@@ -184,8 +195,11 @@ impl PanelManager {
                 continue;
             }
 
+            // whether this ray hits the back of the panel
+            let on_back = d > 0.0;
+
             // bundle the intersection info and discard Z info
-            let intersection = (hit, at, key.clone());
+            let intersection = (hit, at, on_back, key.clone());
 
             // get the current closest (or set ours if there is none currently)
             let closest = closest.get_or_insert(intersection.clone());
@@ -196,7 +210,7 @@ impl PanelManager {
             }
         }
 
-        closest.map(|(_, at, key)| (at, key))
+        closest.map(|(_, at, on_back, key)| (at, on_back, key))
     }
 
     fn disable_cursor(&mut self) {

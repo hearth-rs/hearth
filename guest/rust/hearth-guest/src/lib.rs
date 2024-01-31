@@ -303,6 +303,14 @@ impl Message {
 
         Self { data, caps }
     }
+
+    /// Parses this JSON-encoded message into a given data type.
+    ///
+    /// Panics if decoding fails.
+    pub fn parse<T: for<'a> Deserialize<'a>>(self) -> (T, Vec<Capability>) {
+        let data = serde_json::from_slice(&self.data).unwrap();
+        (data, self.caps)
+    }
 }
 
 /// A loaded lump.

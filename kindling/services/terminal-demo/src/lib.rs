@@ -76,6 +76,7 @@ pub extern "C" fn run() {
         panels.send(
             &PanelManagerRequest::CreatePanel {
                 transform: *transform,
+                one_sided: true,
             },
             &[&on_event.make_capability(Permissions::SEND | Permissions::MONITOR)],
         );

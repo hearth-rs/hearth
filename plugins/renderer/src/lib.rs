@@ -20,7 +20,6 @@ use std::sync::Arc;
 
 use hearth_rend3::{
     rend3::{types::*, *},
-    rend3_routine::pbr::{AlbedoComponent, PbrMaterial},
     Rend3Command, Rend3Plugin,
 };
 use hearth_runtime::{
@@ -34,6 +33,8 @@ use hearth_runtime::{
     tracing::{error, warn},
     utils::*,
 };
+
+mod conv;
 
 pub struct MeshLoader(Arc<Renderer>);
 
@@ -79,13 +80,7 @@ impl JsonAssetLoader for MaterialLoader {
         store: &AssetStore,
         data: Self::Data,
     ) -> anyhow::Result<Self::Asset> {
-        let albedo = store.load_asset::<TextureLoader>(&data.albedo).await?;
-
-        let material = PbrMaterial {
-            albedo: AlbedoComponent::Texture(albedo.as_ref().to_owned()),
-            ..Default::default()
-        };
-
+        let material = conv::conv_material(store, data).await?;
         let handle = self.0.add_material(material);
         Ok(handle)
     }

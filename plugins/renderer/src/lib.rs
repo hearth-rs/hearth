@@ -114,8 +114,8 @@ impl JsonAssetLoader for TextureLoader {
             data: data.data,
             format: TextureFormat::Rgba8UnormSrgb,
             size: data.size,
-            mip_count: MipmapCount::ONE,
-            mip_source: MipmapSource::Uploaded,
+            mip_count: MipmapCount::Maximum,
+            mip_source: MipmapSource::Generated,
         };
 
         let handle = self.0.add_texture_2d(texture);

@@ -1,9 +1,12 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, path::Path};
 
-use glam::{uvec2, vec3, Mat4, Vec2, Vec3, Vec4};
+use glam::{uvec2, vec3, Mat3, Mat4, Vec2, Vec3, Vec4};
+use gltf::image::Format;
 use hearth_guest::{renderer::*, ByteVec, Lump, LumpId};
-use image::GenericImageView;
-use kindling_host::prelude::{RequestResponse, REGISTRY};
+use kindling_host::{
+    fs,
+    prelude::{RequestResponse, REGISTRY},
+};
 use serde::Serialize;
 
 pub type Renderer = RequestResponse<RendererRequest, RendererResponse>;
@@ -15,9 +18,33 @@ pub extern "C" fn run() {
 
     let _ = ren.request(
         RendererRequest::SetAmbientLighting {
-            ambient: Vec4::new(1.0, 1.0, 1.0, 1.0),
+            ambient: Vec4::new(0.1, 0.1, 0.1, 1.0),
         },
         &[],
+    );
+
+    let _ = ren.request(
+        RendererRequest::AddDirectionalLight {
+            initial_state: DirectionalLightState {
+                color: Vec3::ONE,
+                intensity: 10.0,
+                direction: Vec3::new(0.1, -1.0, 0.1).normalize(),
+                distance: 10.0,
+            },
+        },
+        &[],
+    );
+
+    spawn_gltf(
+        &ren,
+        include_bytes!("WaterBottle.glb"),
+        Mat4::from_translation(vec3(0.0, -1.0, 0.0)),
+    );
+
+    spawn_gltf(
+        &ren,
+        include_bytes!("DamagedHelmet.glb"),
+        Mat4::from_translation(vec3(2.0, -1.0, 1.7)) * Mat4::from_rotation_y(PI / 2.0),
     );
 
     spawn_gltf(
@@ -27,10 +54,99 @@ pub extern "C" fn run() {
     );
 }
 
-pub fn load_albedo_material(texture: &[u8]) -> LumpId {
-    json_lump(&MaterialData {
-        albedo: load_texture(texture),
-    })
+pub fn spawn_from_fs(ren: &Renderer, path: &str, translation: Mat4) {
+    let base_data = fs::read_file(&path).unwrap();
+    let base = gltf::Gltf::from_slice_without_validation(&base_data).unwrap();
+}
+
+pub fn load_material(images: &[LumpId], material: &gltf::Material) -> MaterialData {
+    let pbr = material.pbr_metallic_roughness();
+    let base = pbr.base_color_texture().unwrap();
+    let base = base.texture().source();
+    let albedo = images[base.index()];
+
+    let ao = if let Some(info) = material.occlusion_texture() {
+        Some(images[info.texture().source().index()])
+    } else {
+        None
+    };
+
+    let mr = if let Some(info) = pbr.metallic_roughness_texture() {
+        Some(images[info.texture().source().index()])
+    } else {
+        None
+    };
+
+    let normal = if let Some(info) = material.normal_texture() {
+        let texture = images[info.texture().source().index()];
+        let direction = NormalTextureYDirection::Up;
+        let components = NormalTextureComponents::Tricomponent;
+
+        Some(NormalTexture {
+            texture,
+            direction,
+            components,
+        });
+
+        None
+    } else {
+        None
+    };
+
+    let aomr_textures = match (ao, mr) {
+        (Some(ao), Some(mr)) if mr == ao => AoMRTextures::Combined { texture: Some(mr) },
+        (ao, mr) => AoMRTextures::SwizzledSplit {
+            ao_texture: ao,
+            mr_texture: mr,
+        },
+    };
+
+    let transparency = match material.alpha_mode() {
+        gltf::material::AlphaMode::Opaque => Transparency::Opaque,
+        gltf::material::AlphaMode::Mask => Transparency::Cutout {
+            cutout: material.alpha_cutoff().unwrap_or(0.5),
+        },
+        gltf::material::AlphaMode::Blend => Transparency::Blend,
+    };
+
+    let emissive_texture = if let Some(info) = material.emissive_texture() {
+        Some(images[info.texture().source().index()])
+    } else {
+        None
+    };
+
+    MaterialData {
+        albedo: AlbedoComponent {
+            vertex: None,
+            value: None,
+            texture: Some(albedo),
+        },
+        transparency,
+        normal,
+        aomr_textures,
+        ao_factor: None,
+        metallic_factor: Some(pbr.metallic_factor()),
+        roughness_factor: Some(pbr.roughness_factor()),
+        clearcoat_textures: ClearcoatTextures::None,
+        clearcoat_factor: None,
+        clearcoat_roughness_factor: None,
+        emissive: MaterialComponent {
+            value: Some(Vec3::from_slice(&material.emissive_factor())),
+            texture: emissive_texture,
+        },
+        reflectance: MaterialComponent {
+            value: None,
+            texture: None,
+        },
+        anisotropy: MaterialComponent {
+            value: None,
+            texture: None,
+        },
+        uv_transform0: Default::default(),
+        uv_transform1: Default::default(),
+        unlit: material.unlit(),
+        sample_type: SampleType::Linear,
+    }
 }
 
 pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
@@ -41,9 +157,21 @@ pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
     let images: Vec<_> = images
         .into_iter()
         .map(|image| {
+            let mut data = Vec::with_capacity((image.width * image.height) as usize * 4);
+
+            match image.format {
+                Format::R8G8B8A8 => data = image.pixels.clone(),
+                Format::R8G8B8 => {
+                    for rgb in image.pixels.chunks_exact(3) {
+                        data.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 0xff]);
+                    }
+                }
+                _ => panic!("unsupported format"),
+            }
+
             json_lump(&TextureData {
                 label: None,
-                data: image.pixels.clone(),
+                data,
                 size: uvec2(image.width, image.height),
             })
         })
@@ -51,13 +179,7 @@ pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
 
     let materials: Vec<_> = document
         .materials()
-        .map(|material| {
-            let pbr = material.pbr_metallic_roughness();
-            let base = pbr.base_color_texture().unwrap();
-            let base = base.texture().source();
-            let albedo = images[base.index()];
-            json_lump(&MaterialData { albedo })
-        })
+        .map(|material| json_lump(&load_material(&images, &material)))
         .collect();
 
     let mut objects = Vec::new();
@@ -149,18 +271,6 @@ pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
     for object in objects {
         ren.request(object, &[]).0.unwrap();
     }
-}
-
-pub fn load_texture(src: &[u8]) -> LumpId {
-    let image = image::load_from_memory(src).unwrap();
-    let size = image.dimensions().into();
-    let data = image.into_rgba8().into_vec();
-
-    json_lump(&TextureData {
-        label: None,
-        data,
-        size,
-    })
 }
 
 pub fn json_lump(data: &impl Serialize) -> LumpId {

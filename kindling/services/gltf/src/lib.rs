@@ -183,8 +183,19 @@ pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
         .collect();
 
     let mut objects = Vec::new();
+    let scene = document.default_scene().expect("no default scene");
+    let mut node_stack = Vec::new();
+    node_stack.extend(scene.nodes().map(|node| (node, transform)));
 
-    for mesh in document.meshes() {
+    while let Some((node, transform)) = node_stack.pop() {
+        let transform = transform * Mat4::from_cols_array_2d(&node.transform().matrix());
+
+        node_stack.extend(node.children().map(|node| (node, transform)));
+
+        let Some(mesh) = node.mesh() else {
+            continue;
+        };
+
         for prim in mesh.primitives() {
             let reader = prim.reader(|buffer| Some(&buffers[buffer.index()]));
 

@@ -65,7 +65,6 @@ struct PluginWrapper {
 
 /// Builder struct for a single Hearth [Runtime].
 pub struct RuntimeBuilder {
-    config_file: toml::Table,
     plugins: HashMap<TypeId, PluginWrapper>,
     plugin_order: Vec<TypeId>,
     runners: Vec<Box<dyn FnOnce(Arc<Runtime>) + Send>>,
@@ -82,7 +81,7 @@ pub struct RuntimeBuilder {
 
 impl RuntimeBuilder {
     /// Creates a new [RuntimeBuilder] with nothing loaded.
-    pub fn new(config_file: toml::Table) -> Self {
+    pub fn new() -> Self {
         let lump_store = Arc::new(LumpStoreImpl::new());
         let asset_store = AssetStore::new(lump_store.clone());
         let (service_start_tx, service_start_rx) = unbounded_channel();
@@ -91,7 +90,6 @@ impl RuntimeBuilder {
         let registry_builder = RegistryBuilder::new(post.clone());
 
         Self {
-            config_file,
             plugins: Default::default(),
             plugin_order: Default::default(),
             runners: Default::default(),
@@ -110,19 +108,6 @@ impl RuntimeBuilder {
     /// Gets a handle to the post office that this runtime will be using.
     pub fn get_post(&self) -> Arc<PostOffice> {
         self.post.clone()
-    }
-
-    /// Loads a configuration value from a table in the config file.
-    pub fn load_config<T: serde::de::DeserializeOwned>(&self, table: &str) -> anyhow::Result<T> {
-        let value = self
-            .config_file
-            .get(table)
-            .ok_or_else(|| anyhow::anyhow!("No table '{}' in config file", table))?
-            .to_owned();
-
-        T::deserialize(value).map_err(|err| {
-            anyhow::anyhow!("Failed to deserialize '{}' in config: {:?}", table, err)
-        })
     }
 
     /// Adds a plugin to the runtime.

@@ -18,9 +18,7 @@ async fn main() {
 
     let config = RuntimeConfig {};
 
-    let config_path = hearth_runtime::get_config_path();
-    let config_file = hearth_runtime::load_config(&config_path).unwrap();
-    let mut builder = RuntimeBuilder::new(config_file);
+    let mut builder = RuntimeBuilder::new();
     builder.add_plugin(hearth_wasm::WasmPlugin::default());
     let runtime = builder.run(config).await;
 

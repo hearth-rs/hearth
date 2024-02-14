@@ -25,7 +25,6 @@ use hearth_guest::{
 use kindling_host::{prelude::*, registry::Registry};
 use serde::{Deserialize, Serialize};
 
-// TODO: Break out to schema crate
 #[derive(Deserialize, Serialize)]
 pub struct RegistryConfig {
     pub service_names: Vec<String>,

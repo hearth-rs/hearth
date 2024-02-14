@@ -174,7 +174,7 @@ impl Terminal {
 
         let available = (initial_state.half_size - initial_state.padding) * 2.0;
         let grid_size = (available / cell_size / initial_state.units_per_em)
-            .ceil()
+            .floor()
             .as_uvec2();
 
         let size_info = alacritty_terminal::term::SizeInfo::new(
@@ -253,7 +253,7 @@ impl Terminal {
 
         let available = (state.half_size - state.padding) * 2.0;
         let grid_size = (available / self.cell_size / state.units_per_em)
-            .ceil()
+            .floor()
             .as_uvec2();
 
         if inner.grid_size != grid_size {

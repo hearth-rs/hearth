@@ -1,4 +1,4 @@
-// Copyright (c) 2023 the Hearth contributors.
+// Copyright (c) 2024 Marceline Cramer
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // This file is part of Hearth.
@@ -15,23 +15,3 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
-
-use hearth_guest::window::WindowEvent;
-use kindling_host::prelude::*;
-
-hearth_guest::export_metadata!();
-
-#[no_mangle]
-pub extern "C" fn run() {
-    let events = MAIN_WINDOW.subscribe();
-
-    loop {
-        let (msg, _) = events.recv::<WindowEvent>();
-
-        if let WindowEvent::Redraw { .. } = msg {
-            continue;
-        }
-
-        info!(?msg, "window event");
-    }
-}

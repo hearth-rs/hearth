@@ -52,6 +52,8 @@ impl Plugin for TimePlugin {
 #[derive(GetProcessMetadata)]
 pub struct SleepService;
 
+// This cannot be a [RequestResponse] type because the response must be sent
+// asynchronously.
 #[async_trait]
 impl SinkProcess for SleepService {
     type Message = f32;

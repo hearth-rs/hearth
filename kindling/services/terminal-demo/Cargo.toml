@@ -7,7 +7,7 @@ description = "A demonstration of Hearth's terminal emulator."
 [package.metadata.service]
 name = "rs.hearth.kindling.TerminalDemo"
 targets = []
-dependencies.need = ["hearth.Window", "hearth.terminal.TerminalFactory", "hearth.Sleep"]
+dependencies.need = ["hearth.terminal.TerminalFactory", "hearth.Sleep", "rs.hearth.kindling.PanelManager"]
 
 [lib]
 crate-type = ["cdylib"]
@@ -15,3 +15,5 @@ crate-type = ["cdylib"]
 [dependencies]
 hearth-guest.workspace = true
 kindling-host.workspace = true
+kindling-schema.workspace = true
+serde_json.workspace = true

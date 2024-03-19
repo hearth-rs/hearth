@@ -27,6 +27,7 @@ pub mod canvas;
 pub mod debug_draw;
 pub mod fs;
 pub mod registry;
+pub mod renderer;
 pub mod terminal;
 pub mod time;
 pub mod wasm;

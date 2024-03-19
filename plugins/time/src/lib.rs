@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
+use std::time::SystemTime;
+
 use hearth_runtime::{
     async_trait,
     flue::Table,
@@ -34,7 +36,11 @@ use hearth_runtime::{
 
 /// A plugin that provides timing services to guests.
 ///
-/// Adds the [SleepService], [TimerFactory], and [StopwatchFactory] services.
+/// Adds the following services:
+/// - [SleepService]
+/// - [TimerFactory]
+/// - [StopwatchFactory]
+/// - [UnixTimeService]
 #[derive(Default)]
 pub struct TimePlugin;
 
@@ -43,7 +49,8 @@ impl Plugin for TimePlugin {
         builder
             .add_plugin(SleepService)
             .add_plugin(TimerFactory)
-            .add_plugin(StopwatchFactory);
+            .add_plugin(StopwatchFactory)
+            .add_plugin(UnixTimeService);
     }
 }
 
@@ -202,4 +209,33 @@ impl RequestResponseProcess for Stopwatch {
             caps: vec![],
         }
     }
+}
+
+/// Native service that returns time since the UNIX epoch in nanoseconds as an
+/// unsigned 128-bit integer.
+#[derive(GetProcessMetadata)]
+pub struct UnixTimeService;
+
+#[async_trait]
+impl RequestResponseProcess for UnixTimeService {
+    type Request = ();
+    type Response = u128;
+
+    async fn on_request<'a>(
+        &'a mut self,
+        _request: &mut RequestInfo<'a, Self::Request>,
+    ) -> ResponseInfo<'a, Self::Response> {
+        let time_since_epoch = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("system time before UNIX epoch");
+
+        ResponseInfo {
+            data: time_since_epoch.as_nanos(),
+            caps: vec![],
+        }
+    }
+}
+
+impl ServiceRunner for UnixTimeService {
+    const NAME: &'static str = "hearth.UnixTime";
 }

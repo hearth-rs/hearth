@@ -17,9 +17,7 @@
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
 use hearth_guest::{renderer::*, Lump};
-use kindling_host::prelude::RequestResponse;
-
-type Renderer = RequestResponse<RendererRequest, RendererResponse>;
+use kindling_host::renderer::set_skybox;
 
 /// Helper function to append a skybox image to the cube texture data.
 fn add_face(data: &mut Vec<u8>, image: &[u8]) {
@@ -37,17 +35,11 @@ pub extern "C" fn run() {
     add_face(&mut data, include_bytes!("elyvisions/sh_rt.png"));
     add_face(&mut data, include_bytes!("elyvisions/sh_lf.png"));
 
-    let texture = Lump::load(
-        &serde_json::to_vec(&TextureData {
-            label: None,
-            size: (1024, 1024).into(),
-            data,
-        })
-        .unwrap(),
-    )
-    .get_id();
+    let texture = Lump::load(&TextureData {
+        label: None,
+        size: (1024, 1024).into(),
+        data,
+    });
 
-    let renderer = Renderer::expect_service("hearth.Renderer");
-    let (result, _) = renderer.request(RendererRequest::SetSkybox { texture }, &[]);
-    result.unwrap();
+    set_skybox(&texture);
 }

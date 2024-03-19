@@ -306,6 +306,7 @@ impl Message {
 }
 
 /// A loaded lump.
+#[derive(Debug)]
 pub struct Lump(u32);
 
 impl Drop for Lump {
@@ -315,14 +316,20 @@ impl Drop for Lump {
 }
 
 impl Lump {
-    /// Loads a new lump from in-process data.
-    pub fn load(data: &[u8]) -> Self {
+    /// Loads a new lump directly from in-process bytes.
+    pub fn load_raw(data: &[u8]) -> Self {
         unsafe {
             let ptr = data.as_ptr() as u32;
             let len = data.len() as u32;
             let handle = abi::lump::load(ptr, len);
             Self(handle)
         }
+    }
+
+    /// Loads a JSON-encoded lump from a serializable data type.
+    pub fn load(data: &impl Serialize) -> Self {
+        let bytes = serde_json::to_vec(data).unwrap();
+        Self::load_raw(&bytes)
     }
 
     /// Loads a lump from the ID of an already existing lump.

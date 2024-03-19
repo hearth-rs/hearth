@@ -16,5 +16,27 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
 
-pub mod gltf;
-pub mod model;
+//! Defines the schema for interacting with glTF loading service.
+
+use glam::Mat4;
+use hearth_guest::LumpId;
+use serde::{Deserialize, Serialize};
+
+use crate::model::Model;
+
+/// A request to the glTF loader service.
+///
+/// Responds with [GltfResponse].
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum GltfRequest {
+    /// Loads a binary or embedded glTF model.
+    LoadSingle {
+        /// The lump containing the glTF data.
+        lump: LumpId,
+
+        /// The root transform of the glTF.
+        transform: Mat4,
+    },
+}
+
+pub type GltfResponse = Result<Model, String>;

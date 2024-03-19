@@ -4,6 +4,7 @@ members = ["init", "services/*", "host", "utils", "schema"]
 exclude = ["build"]
 
 [workspace.dependencies]
+glam = "0.20"
 hearth-guest = { path = "../guest/rust/hearth-guest"}
 kindling-host = { path = "host"}
 kindling-schema = { path = "schema" }

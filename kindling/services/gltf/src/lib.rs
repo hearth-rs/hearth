@@ -12,25 +12,6 @@ pub extern "C" fn run() {
     let ren = REGISTRY.get_service("hearth.Renderer").unwrap();
     let ren = Renderer::new(ren);
 
-    let _ = ren.request(
-        RendererRequest::SetAmbientLighting {
-            ambient: Vec4::new(0.1, 0.1, 0.1, 1.0),
-        },
-        &[],
-    );
-
-    let _ = ren.request(
-        RendererRequest::AddDirectionalLight {
-            initial_state: DirectionalLightState {
-                color: Vec3::ONE,
-                intensity: 10.0,
-                direction: Vec3::new(0.1, -1.0, 0.1).normalize(),
-                distance: 10.0,
-            },
-        },
-        &[],
-    );
-
     spawn_gltf(
         &ren,
         include_bytes!("WaterBottle.glb"),

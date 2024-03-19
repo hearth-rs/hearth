@@ -1,13 +1,9 @@
-use std::{f32::consts::PI, path::Path};
+use std::f32::consts::PI;
 
-use glam::{uvec2, vec3, Mat3, Mat4, Vec2, Vec3, Vec4};
+use glam::{uvec2, vec3, Mat4, Vec2, Vec3, Vec4};
 use gltf::image::Format;
 use hearth_guest::{renderer::*, ByteVec, Lump, LumpId};
-use kindling_host::{
-    fs,
-    prelude::{RequestResponse, REGISTRY},
-};
-use serde::Serialize;
+use kindling_host::prelude::*;
 
 pub type Renderer = RequestResponse<RendererRequest, RendererResponse>;
 
@@ -54,28 +50,19 @@ pub extern "C" fn run() {
     );
 }
 
-pub fn spawn_from_fs(ren: &Renderer, path: &str, translation: Mat4) {
-    let base_data = fs::read_file(&path).unwrap();
-    let base = gltf::Gltf::from_slice_without_validation(&base_data).unwrap();
-}
-
 pub fn load_material(images: &[LumpId], material: &gltf::Material) -> MaterialData {
     let pbr = material.pbr_metallic_roughness();
     let base = pbr.base_color_texture().unwrap();
     let base = base.texture().source();
     let albedo = images[base.index()];
 
-    let ao = if let Some(info) = material.occlusion_texture() {
-        Some(images[info.texture().source().index()])
-    } else {
-        None
-    };
+    let ao = material
+        .occlusion_texture()
+        .map(|info| images[info.texture().source().index()]);
 
-    let mr = if let Some(info) = pbr.metallic_roughness_texture() {
-        Some(images[info.texture().source().index()])
-    } else {
-        None
-    };
+    let mr = pbr
+        .metallic_roughness_texture()
+        .map(|info| images[info.texture().source().index()]);
 
     let normal = if let Some(info) = material.normal_texture() {
         let texture = images[info.texture().source().index()];
@@ -86,9 +73,7 @@ pub fn load_material(images: &[LumpId], material: &gltf::Material) -> MaterialDa
             texture,
             direction,
             components,
-        });
-
-        None
+        })
     } else {
         None
     };
@@ -109,11 +94,9 @@ pub fn load_material(images: &[LumpId], material: &gltf::Material) -> MaterialDa
         gltf::material::AlphaMode::Blend => Transparency::Blend,
     };
 
-    let emissive_texture = if let Some(info) = material.emissive_texture() {
-        Some(images[info.texture().source().index()])
-    } else {
-        None
-    };
+    let emissive_texture = material
+        .emissive_texture()
+        .map(|info| images[info.texture().source().index()]);
 
     MaterialData {
         albedo: AlbedoComponent {
@@ -169,17 +152,18 @@ pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
                 _ => panic!("unsupported format"),
             }
 
-            json_lump(&TextureData {
+            Lump::load(&TextureData {
                 label: None,
                 data,
                 size: uvec2(image.width, image.height),
             })
+            .get_id()
         })
         .collect();
 
     let materials: Vec<_> = document
         .materials()
-        .map(|material| json_lump(&load_material(&images, &material)))
+        .map(|material| Lump::load(&load_material(&images, &material)))
         .collect();
 
     let mut objects = Vec::new();
@@ -256,7 +240,7 @@ pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
                 indices.extend(read_indices.into_u32());
             }
 
-            let mesh = json_lump(&MeshData {
+            let mesh = Lump::load(&MeshData {
                 positions: ByteVec(positions),
                 normals: ByteVec(normals),
                 tangents: ByteVec(tangents),
@@ -268,23 +252,19 @@ pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
                 indices: ByteVec(indices),
             });
 
-            let material = materials[prim.material().index().unwrap()];
+            let material = &materials[prim.material().index().unwrap()];
 
             objects.push(RendererRequest::AddObject {
-                mesh,
+                mesh: mesh.get_id(),
                 skeleton: None,
-                material,
+                material: material.get_id(),
                 transform,
             });
         }
     }
 
     for object in objects {
+        debug!("spawning object: {object:#?}");
         ren.request(object, &[]).0.unwrap();
     }
-}
-
-pub fn json_lump(data: &impl Serialize) -> LumpId {
-    let data = serde_json::to_vec(data).unwrap();
-    Lump::load(&data).get_id()
 }

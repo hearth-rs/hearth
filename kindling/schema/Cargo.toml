@@ -5,5 +5,6 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+glam.workspace = true
 hearth-guest.workspace = true
 serde.workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "kindling-scene"
+version = "0.1.0"
+edition = "2021"
+description = "Kindling's main entrypoint"
+
+[package.metadata.service]
+name = "rs.hearth.kindling.Scene"
+targets = []
+dependencies.need = [ "rs.hearth.kindling.glTF", "hearth.Renderer", "hearth.wasm.WasmProcessSpawner" ]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hearth-guest.workspace = true
+kindling-host.workspace = true
+kindling-schema.workspace = true

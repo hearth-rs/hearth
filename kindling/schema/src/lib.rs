@@ -15,3 +15,6 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with Hearth. If not, see <https://www.gnu.org/licenses/>.
+
+pub mod gltf;
+pub mod model;

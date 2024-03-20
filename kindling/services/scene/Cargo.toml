@@ -7,7 +7,7 @@ description = "Kindling's main entrypoint"
 [package.metadata.service]
 name = "rs.hearth.kindling.Scene"
 targets = []
-dependencies.need = [ "rs.hearth.kindling.glTF", "hearth.Renderer" ]
+dependencies.need = [ "rs.hearth.kindling.glTF", "hearth.Renderer", "hearth.wasm.WasmProcessSpawner" ]
 
 [lib]
 crate-type = ["cdylib"]

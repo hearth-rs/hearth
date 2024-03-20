@@ -1,34 +1,32 @@
-use std::f32::consts::PI;
-
-use glam::{uvec2, vec3, Mat4, Vec2, Vec3, Vec4};
+use glam::{uvec2, Mat4, Vec2, Vec3, Vec4};
 use gltf::image::Format;
-use hearth_guest::{renderer::*, ByteVec, Lump, LumpId};
+use hearth_guest::{renderer::*, ByteVec, Lump, LumpId, PARENT};
 use kindling_host::prelude::*;
+use kindling_schema::{gltf::GltfRequest, model::Model};
 
 pub type Renderer = RequestResponse<RendererRequest, RendererResponse>;
 
 #[no_mangle]
 pub extern "C" fn run() {
-    let ren = REGISTRY.get_service("hearth.Renderer").unwrap();
-    let ren = Renderer::new(ren);
+    loop {
+        let (req, caps) = PARENT.recv::<GltfRequest>();
+        let child = spawn_fn(on_request, None);
+        child.send(&req, caps.iter().collect::<Vec<_>>().as_slice());
+    }
+}
 
-    spawn_gltf(
-        &ren,
-        include_bytes!("WaterBottle.glb"),
-        Mat4::from_translation(vec3(0.0, -1.0, 0.0)),
-    );
+pub fn on_request() {
+    let (req, caps) = PARENT.recv::<GltfRequest>();
 
-    spawn_gltf(
-        &ren,
-        include_bytes!("DamagedHelmet.glb"),
-        Mat4::from_translation(vec3(2.0, -1.0, 1.7)) * Mat4::from_rotation_y(PI / 2.0),
-    );
+    let reply = caps.first().expect("no reply cap");
 
-    spawn_gltf(
-        &ren,
-        include_bytes!("korakoe.vrm"),
-        Mat4::from_translation(vec3(-2.0, -1.0, 1.7)) * Mat4::from_rotation_y(PI / -2.0),
-    );
+    match req {
+        GltfRequest::LoadSingle { lump, transform } => {
+            let src = Lump::load_by_id(&lump).get_data();
+            let model = load_gltf(&src, transform);
+            reply.send(&Result::<Model, String>::Ok(model), &[]);
+        }
+    }
 }
 
 pub fn load_material(images: &[LumpId], material: &gltf::Material) -> MaterialData {
@@ -113,7 +111,7 @@ pub fn load_material(images: &[LumpId], material: &gltf::Material) -> MaterialDa
     }
 }
 
-pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
+pub fn load_gltf(src: &[u8], transform: Mat4) -> Model {
     use gltf::*;
 
     let (document, buffers, images) = import_slice(src).unwrap();
@@ -147,7 +145,7 @@ pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
         .map(|material| Lump::load(&load_material(&images, &material)))
         .collect();
 
-    let mut objects = Vec::new();
+    let mut meshes = Vec::new();
     let scene = document.default_scene().expect("no default scene");
     let mut node_stack = Vec::new();
     node_stack.extend(scene.nodes().map(|node| (node, transform)));
@@ -235,17 +233,13 @@ pub fn spawn_gltf(ren: &Renderer, src: &[u8], transform: Mat4) {
 
             let material = &materials[prim.material().index().unwrap()];
 
-            objects.push(RendererRequest::AddObject {
+            meshes.push(kindling_schema::model::Mesh {
                 mesh: mesh.get_id(),
-                skeleton: None,
                 material: material.get_id(),
                 transform,
             });
         }
     }
 
-    for object in objects {
-        debug!("spawning object: {object:#?}");
-        ren.request(object, &[]).0.unwrap();
-    }
+    Model { meshes }
 }

@@ -7,7 +7,7 @@ description = "Implements glTF loading on top of the native renderer schema."
 [package.metadata.service]
 name = "rs.hearth.kindling.glTF"
 targets = []
-dependencies.need = ["hearth.Renderer"]
+dependencies.need = [ "hearth.wasm.WasmProcessSpawner" ]
 
 [lib]
 crate-type = ["cdylib"]
@@ -17,6 +17,7 @@ glam = "0.20"
 gltf = { version = "1.3", features = ["KHR_materials_unlit"] }
 hearth-guest.workspace = true
 kindling-host.workspace = true
+kindling-schema.workspace = true
 image = "0.24"
 serde = "1"
 serde_json = "1"
